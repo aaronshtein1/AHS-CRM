@@ -1,0 +1,696 @@
+// Prisma schema for Patient CRM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USERS & AUTH
+// ============================================
+
+enum UserRole {
+  ADMIN
+  REP
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole @default(REP)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  ownedPatients          Patient[]           @relation("PatientOwner")
+  createdPatients        Patient[]           @relation("PatientCreator")
+  assignedProcesses      ProcessInstance[]   @relation("ProcessAssignee")
+  createdProcesses       ProcessInstance[]   @relation("ProcessCreator")
+  createdTemplates       ProcessTemplate[]   @relation("TemplateCreator")
+  verifiedInsurance      InsurancePolicy[]   @relation("InsuranceVerifier")
+  completedStages        ProcessStageInstance[] @relation("StageCompleter")
+  stageTransitions       StageTransition[]
+  updates                Update[]            @relation("UpdateCreator")
+  redactedUpdates        Update[]            @relation("UpdateRedactor")
+  communications         Communication[]
+  assignedTasks          Task[]              @relation("TaskAssignee")
+  createdTasks           Task[]              @relation("TaskCreator")
+  completedTasks         Task[]              @relation("TaskCompleter")
+  auditLogs              AuditLog[]
+
+  @@map("users")
+}
+
+// ============================================
+// PATIENT (CORE ENTITY)
+// ============================================
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+  DECEASED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNKNOWN
+}
+
+model Patient {
+  id                String        @id @default(uuid())
+  firstName         String
+  middleName        String?
+  lastName          String
+  dateOfBirth       DateTime?
+  gender            Gender        @default(UNKNOWN)
+  preferredLanguage String        @default("en")
+  ssn               String?       // Should be encrypted in practice
+  notes             String?
+  status            PatientStatus @default(ACTIVE)
+
+  // Assignment
+  ownerId     String?
+  owner       User?   @relation("PatientOwner", fields: [ownerId], references: [id])
+  createdById String?
+  createdBy   User?   @relation("PatientCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  contacts          PatientContact[]
+  addresses         Address[]
+  emergencyContacts EmergencyContact[]
+  insurancePolicies InsurancePolicy[]
+  medicalInfo       MedicalInfo?
+  processInstances  ProcessInstance[]
+  updates           Update[]
+  communications    Communication[]
+  tasks             Task[]
+  scheduledJobs     ScheduledJob[]
+
+  @@index([ownerId])
+  @@index([lastName, firstName])
+  @@index([status])
+  @@map("patients")
+}
+
+// ============================================
+// PATIENT CONTACTS
+// ============================================
+
+enum ContactType {
+  PHONE
+  EMAIL
+}
+
+enum ContactLabel {
+  HOME
+  WORK
+  MOBILE
+  OTHER
+}
+
+model PatientContact {
+  id           String       @id @default(uuid())
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type         ContactType
+  value        String
+  label        ContactLabel @default(OTHER)
+  isPrimary    Boolean      @default(false)
+  canContact   Boolean      @default(true)
+  canText      Boolean      @default(true) // For phones
+  doNotContact Boolean      @default(false)
+  verifiedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([patientId])
+  @@index([type, value])
+  @@map("patient_contacts")
+}
+
+// ============================================
+// ADDRESSES
+// ============================================
+
+enum AddressType {
+  HOME
+  MAILING
+  TEMPORARY
+  OTHER
+}
+
+model Address {
+  id            String      @id @default(uuid())
+  patientId     String
+  patient       Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type          AddressType @default(HOME)
+  street1       String
+  street2       String?
+  city          String
+  state         String
+  zipCode       String
+  county        String?
+  isPrimary     Boolean     @default(false)
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([patientId])
+  @@map("addresses")
+}
+
+// ============================================
+// EMERGENCY CONTACTS
+// ============================================
+
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  firstName    String
+  lastName     String
+  relationship String
+  phone        String?
+  email        String?
+  isPrimary    Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([patientId])
+  @@map("emergency_contacts")
+}
+
+// ============================================
+// INSURANCE
+// ============================================
+
+enum InsuranceType {
+  MEDICAID
+  MEDICARE
+  COMMERCIAL
+  OTHER
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+model InsurancePolicy {
+  id                 String             @id @default(uuid())
+  patientId          String
+  patient            Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type               InsuranceType
+  payerName          String
+  memberId           String? // Medicaid ID, etc.
+  groupNumber        String?
+  cin                String? // Medicaid CIN
+  planName           String?
+  effectiveDate      DateTime?
+  terminationDate    DateTime?
+  isPrimary          Boolean            @default(false)
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedById       String?
+  verifiedBy         User?              @relation("InsuranceVerifier", fields: [verifiedById], references: [id])
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([patientId])
+  @@index([memberId])
+  @@map("insurance_policies")
+}
+
+// ============================================
+// MEDICAL INFO (1:1 with Patient)
+// ============================================
+
+model MedicalInfo {
+  id          String   @id @default(uuid())
+  patientId   String   @unique
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  pcpName     String?
+  pcpPhone    String?
+  pcpFax      String?
+  pcpAddress  String?
+  pcpNpi      String?
+  diagnoses   Json?    @default("[]") // Array of {code, description, date}
+  allergies   Json?    @default("[]") // Array of strings
+  medications Json?    @default("[]") // Array of {name, dosage, frequency}
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("medical_info")
+}
+
+// ============================================
+// PROCESS TEMPLATES
+// ============================================
+
+model ProcessTemplate {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  isActive       Boolean  @default(true)
+  defaultDueDays Int?     @default(30)
+  createdById    String?
+  createdBy      User?    @relation("TemplateCreator", fields: [createdById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  stages          ProcessStageTemplate[]
+  instances       ProcessInstance[]
+  automationRules AutomationRule[]
+
+  @@map("process_templates")
+}
+
+enum OutcomeType {
+  WON
+  LOST
+  NONE
+}
+
+model ProcessStageTemplate {
+  id                String          @id @default(uuid())
+  processTemplateId String
+  processTemplate   ProcessTemplate @relation(fields: [processTemplateId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  order             Int
+  dueDays           Int?            @default(3)
+  isFinalStage      Boolean         @default(false)
+  outcomeType       OutcomeType     @default(NONE)
+  requiredFields    Json?           @default("[]") // Array of field names
+  checklist         Json?           @default("[]") // Array of {item, required}
+  allowedNextStages Json?           @default("[]") // Array of stage IDs for branching
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  stageInstances  ProcessStageInstance[]
+  automationRules AutomationRule[]
+
+  @@unique([processTemplateId, order])
+  @@index([processTemplateId])
+  @@map("process_stage_templates")
+}
+
+// ============================================
+// PROCESS INSTANCES
+// ============================================
+
+enum ProcessStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  ON_HOLD
+}
+
+enum ProcessOutcome {
+  WON
+  LOST
+}
+
+model ProcessInstance {
+  id                String          @id @default(uuid())
+  patientId         String
+  patient           Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  processTemplateId String
+  processTemplate   ProcessTemplate @relation(fields: [processTemplateId], references: [id])
+  assignedToId      String?
+  assignedTo        User?           @relation("ProcessAssignee", fields: [assignedToId], references: [id])
+  status            ProcessStatus   @default(ACTIVE)
+  outcome           ProcessOutcome?
+  currentStageId    String?
+  startedAt         DateTime        @default(now())
+  dueAt             DateTime?
+  completedAt       DateTime?
+  reopenedFromId    String?         @unique
+  reopenedFrom      ProcessInstance? @relation("ProcessReopen", fields: [reopenedFromId], references: [id])
+  reopenedTo        ProcessInstance? @relation("ProcessReopen")
+  reopenCount       Int             @default(0)
+  notes             String?
+  createdById       String?
+  createdBy         User?           @relation("ProcessCreator", fields: [createdById], references: [id])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  stageInstances   ProcessStageInstance[]
+  stageTransitions StageTransition[]
+  updates          Update[]
+  communications   Communication[]
+  tasks            Task[]
+  scheduledJobs    ScheduledJob[]
+
+  @@index([patientId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("process_instances")
+}
+
+enum StageStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  SKIPPED
+}
+
+model ProcessStageInstance {
+  id                String               @id @default(uuid())
+  processInstanceId String
+  processInstance   ProcessInstance      @relation(fields: [processInstanceId], references: [id], onDelete: Cascade)
+  stageTemplateId   String
+  stageTemplate     ProcessStageTemplate @relation(fields: [stageTemplateId], references: [id])
+  status            StageStatus          @default(PENDING)
+  enteredAt         DateTime?
+  dueAt             DateTime?
+  completedAt       DateTime?
+  completedById     String?
+  completedBy       User?                @relation("StageCompleter", fields: [completedById], references: [id])
+  checklistStatus   Json?                @default("{}") // {itemId: boolean}
+  notes             String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  // Relations
+  transitionsFrom StageTransition[] @relation("TransitionFrom")
+  transitionsTo   StageTransition[] @relation("TransitionTo")
+  updates         Update[]
+  scheduledJobs   ScheduledJob[]
+
+  @@unique([processInstanceId, stageTemplateId])
+  @@index([processInstanceId])
+  @@index([status])
+  @@map("process_stage_instances")
+}
+
+// ============================================
+// STAGE TRANSITIONS (AUDIT)
+// ============================================
+
+model StageTransition {
+  id                String                @id @default(uuid())
+  processInstanceId String
+  processInstance   ProcessInstance       @relation(fields: [processInstanceId], references: [id], onDelete: Cascade)
+  fromStageId       String?
+  fromStage         ProcessStageInstance? @relation("TransitionFrom", fields: [fromStageId], references: [id])
+  toStageId         String
+  toStage           ProcessStageInstance  @relation("TransitionTo", fields: [toStageId], references: [id])
+  performedById     String
+  performedBy       User                  @relation(fields: [performedById], references: [id])
+  reason            String?
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+
+  @@index([processInstanceId])
+  @@map("stage_transitions")
+}
+
+// ============================================
+// UPDATES (TIMELINE)
+// ============================================
+
+enum UpdateType {
+  MANUAL
+  SYSTEM
+  COMMUNICATION
+  ASSIGNMENT
+  STAGE_CHANGE
+}
+
+model Update {
+  id                String                @id @default(uuid())
+  patientId         String
+  patient           Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  processInstanceId String?
+  processInstance   ProcessInstance?      @relation(fields: [processInstanceId], references: [id])
+  stageInstanceId   String?
+  stageInstance     ProcessStageInstance? @relation(fields: [stageInstanceId], references: [id])
+  communicationId   String?               @unique
+  communication     Communication?        @relation(fields: [communicationId], references: [id])
+  type              UpdateType            @default(MANUAL)
+  content           String
+  metadata          Json?
+  createdById       String?
+  createdBy         User?                 @relation("UpdateCreator", fields: [createdById], references: [id])
+  isRedacted        Boolean               @default(false)
+  redactedAt        DateTime?
+  redactedById      String?
+  redactedBy        User?                 @relation("UpdateRedactor", fields: [redactedById], references: [id])
+  redactionReason   String?
+  createdAt         DateTime              @default(now())
+  // No updatedAt - append-only
+
+  @@index([patientId])
+  @@index([processInstanceId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("updates")
+}
+
+// ============================================
+// COMMUNICATIONS
+// ============================================
+
+enum CommunicationType {
+  EMAIL
+  SMS
+}
+
+enum CommunicationDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum CommunicationStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  REPLIED
+}
+
+model Communication {
+  id                String                 @id @default(uuid())
+  patientId         String
+  patient           Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  processInstanceId String?
+  processInstance   ProcessInstance?       @relation(fields: [processInstanceId], references: [id])
+  type              CommunicationType
+  direction         CommunicationDirection @default(OUTBOUND)
+  status            CommunicationStatus    @default(PENDING)
+  toAddress         String
+  fromAddress       String?
+  subject           String? // For email
+  body              String
+  templateId        String?
+  providerId        String? // External ID from SendGrid/Twilio
+  providerResponse  Json?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  failureReason     String?
+  scheduledFor      DateTime?
+  createdById       String?
+  createdBy         User?                  @relation(fields: [createdById], references: [id])
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  // Relations
+  update Update?
+
+  @@index([patientId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@map("communications")
+}
+
+// ============================================
+// MESSAGE TEMPLATES
+// ============================================
+
+model MessageTemplate {
+  id        String            @id @default(uuid())
+  name      String
+  type      CommunicationType
+  subject   String? // For email
+  body      String // With {{variable}} placeholders
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@map("message_templates")
+}
+
+// ============================================
+// AUTOMATION
+// ============================================
+
+enum TriggerType {
+  STAGE_ENTERED
+  STAGE_OVERDUE
+  PROCESS_CREATED
+  PATIENT_ASSIGNED
+  MANUAL
+}
+
+model AutomationRule {
+  id                String                @id @default(uuid())
+  processTemplateId String
+  processTemplate   ProcessTemplate       @relation(fields: [processTemplateId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  triggerType       TriggerType
+  triggerStageId    String?
+  triggerStage      ProcessStageTemplate? @relation(fields: [triggerStageId], references: [id])
+  delayMinutes      Int                   @default(0)
+  conditions        Json?                 @default("{}") // {hasEmail, hasPhone, consent, etc.}
+  actions           Json                  @default("[]") // Array of {type, config}
+  isActive          Boolean               @default(true)
+  order             Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  // Relations
+  scheduledJobs ScheduledJob[]
+
+  @@index([processTemplateId])
+  @@index([triggerType])
+  @@map("automation_rules")
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model ScheduledJob {
+  id                String                @id @default(uuid())
+  automationRuleId  String?
+  automationRule    AutomationRule?       @relation(fields: [automationRuleId], references: [id])
+  patientId         String
+  patient           Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  processInstanceId String?
+  processInstance   ProcessInstance?      @relation(fields: [processInstanceId], references: [id])
+  stageInstanceId   String?
+  stageInstance     ProcessStageInstance? @relation(fields: [stageInstanceId], references: [id])
+  status            JobStatus             @default(PENDING)
+  scheduledFor      DateTime
+  startedAt         DateTime?
+  completedAt       DateTime?
+  attempts          Int                   @default(0)
+  lastError         String?
+  idempotencyKey    String                @unique
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([idempotencyKey])
+  @@map("scheduled_jobs")
+}
+
+// ============================================
+// TASKS
+// ============================================
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id                String           @id @default(uuid())
+  patientId         String
+  patient           Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  processInstanceId String?
+  processInstance   ProcessInstance? @relation(fields: [processInstanceId], references: [id])
+  assignedToId      String?
+  assignedTo        User?            @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  title             String
+  description       String?
+  dueAt             DateTime?
+  priority          TaskPriority     @default(NORMAL)
+  status            TaskStatus       @default(OPEN)
+  completedAt       DateTime?
+  completedById     String?
+  completedBy       User?            @relation("TaskCompleter", fields: [completedById], references: [id])
+  createdById       String?
+  createdBy         User?            @relation("TaskCreator", fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([patientId])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([dueAt])
+  @@map("tasks")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ASSIGN
+  STAGE_CHANGE
+  LOGIN
+  LOGOUT
+}
+
+model AuditLog {
+  id           String      @id @default(uuid())
+  entityType   String
+  entityId     String
+  action       AuditAction
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id])
+  previousData Json?
+  newData      Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
