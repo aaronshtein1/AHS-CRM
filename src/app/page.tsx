@@ -92,13 +92,13 @@ export default function Home() {
       </aside>
 
       <main className="main-content">
-        {view === 'dashboard' && <Dashboard token={token} />}
+        {view === 'dashboard' && <Dashboard token={token} onSelectLead={handleSelectLead} />}
         {view === 'pipeline' && <Pipeline token={token} onSelectLead={handleSelectLead} />}
         {view === 'leads' && <LeadList token={token} onSelectLead={handleSelectLead} />}
         {view === 'lead-detail' && selectedLeadId && (
           <LeadDetail token={token} leadId={selectedLeadId} onBack={() => setView('leads')} user={user} />
         )}
-        {view === 'tasks' && <Tasks token={token} userId={user.id} />}
+        {view === 'tasks' && <Tasks token={token} userId={user.id} onSelectLead={handleSelectLead} />}
         {view === 'settings' && <Settings token={token} user={user} />}
       </main>
     </div>

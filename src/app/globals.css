@@ -996,6 +996,7 @@ html, body {
 
 /* Text utilities */
 .text-red { color: var(--accent-red); }
+.hover-underline:hover { text-decoration: underline; }
 
 /* Responsive */
 @media (max-width: 768px) {

@@ -103,7 +103,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
   );
 }
 
-export default function Tasks({ token, userId }: { token: string; userId: string }) {
+export default function Tasks({ token, userId, onSelectLead }: { token: string; userId: string; onSelectLead?: (id: string) => void }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -188,7 +188,15 @@ export default function Tasks({ token, userId }: { token: string; userId: string
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 12, marginTop: 4 }}>
                         <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
                         {task.dueAt && <span><Clock size={11} /> {new Date(task.dueAt).toLocaleDateString()}</span>}
-                        {task.lead && <span style={{ color: 'var(--accent-blue)' }}>{task.lead.firstName} {task.lead.lastName}</span>}
+                        {task.lead && (
+                          <span 
+                            style={{ color: 'var(--accent-blue)', cursor: 'pointer' }}
+                            onClick={() => onSelectLead?.(task.lead.id)}
+                            className="hover-underline"
+                          >
+                            {task.lead.firstName} {task.lead.lastName}
+                          </span>
+                        )}
                         {task.assignedTo && <span>{task.assignedTo.firstName} {task.assignedTo.lastName}</span>}
                       </div>
                     </div>

@@ -30,7 +30,7 @@ function KPICard({ label, value, target, color, icon: Icon, delay = 0 }: {
   );
 }
 
-export default function Dashboard({ token }: { token: string }) {
+export default function Dashboard({ token, onSelectLead }: { token: string, onSelectLead?: (id: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +109,15 @@ export default function Dashboard({ token }: { token: string }) {
                 <div className={`activity-dot ${item.type?.toLowerCase() || 'manual'}`} />
                 <div className="activity-content">
                   <div className="activity-text">
-                    {item.lead && <span style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>{item.lead.firstName} {item.lead.lastName}: </span>}
+                    {item.lead && (
+                      <span 
+                        style={{ color: 'var(--accent-blue)', fontWeight: 600, cursor: 'pointer' }}
+                        onClick={() => onSelectLead?.(item.lead.id)}
+                        className="hover-underline"
+                      >
+                        {item.lead.firstName} {item.lead.lastName}:{' '}
+                      </span>
+                    )}
                     {item.content}
                   </div>
                   <div className="activity-meta">
