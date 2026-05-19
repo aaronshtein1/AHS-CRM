@@ -37,9 +37,10 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   UNQUALIFIED: ['NEW'],
 };
 
-function EditableField({ label, value, field, onSave }: {
+function EditableField({ label, value, field, onSave, options }: {
   label: string; value: string | number | null | undefined; field: string;
   onSave: (field: string, value: string) => void;
+  options?: {value: string, label: string}[];
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(value ?? ''));
@@ -53,8 +54,15 @@ function EditableField({ label, value, field, onSave }: {
     return (
       <div className="editable-field editing">
         <span className="editable-label">{label}</span>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input className="form-input form-input-sm" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+        <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+          {options ? (
+            <select className="form-select form-input-sm" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()}>
+              <option value="">Select...</option>
+              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : (
+            <input className="form-input form-input-sm" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
+          )}
           <button className="btn-icon" onClick={handleSave}><Save size={14} /></button>
           <button className="btn-icon" onClick={() => setEditing(false)}><X size={14} /></button>
         </div>
@@ -63,9 +71,12 @@ function EditableField({ label, value, field, onSave }: {
   }
 
   return (
-    <div className="editable-field" onClick={() => setEditing(true)}>
+    <div className="editable-field" onClick={() => { setEditValue(String(value ?? '')); setEditing(true); }}>
       <span className="editable-label">{label}</span>
-      <span className="editable-value">{value || '—'} <Edit3 size={12} className="edit-icon" /></span>
+      <span className="editable-value">
+        {options ? (options.find(o => o.value === String(value))?.label || value || '—') : (value || '—')} 
+        <Edit3 size={12} className="edit-icon" />
+      </span>
     </div>
   );
 }
@@ -632,7 +643,13 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
             <EditableField label="City" value={lead.addressCity} field="addressCity" onSave={handleFieldSave} />
             <EditableField label="State" value={lead.addressState} field="addressState" onSave={handleFieldSave} />
             <EditableField label="ZIP" value={lead.addressZip} field="addressZip" onSave={handleFieldSave} />
-            <EditableField label="County" value={lead.county} field="county" onSave={handleFieldSave} />
+            <EditableField 
+              label="County" 
+              value={lead.county} 
+              field="county" 
+              onSave={handleFieldSave}
+              options={['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 'Chautauqua', 'Chemung', 'Chenango', 'Clinton', 'Columbia', 'Cortland', 'Delaware', 'Dutchess', 'Erie', 'Essex', 'Franklin', 'Fulton', 'Genesee', 'Greene', 'Hamilton', 'Herkimer', 'Jefferson', 'Kings', 'Lewis', 'Livingston', 'Madison', 'Monroe', 'Montgomery', 'Nassau', 'New York', 'Niagara', 'Oneida', 'Onondaga', 'Ontario', 'Orange', 'Orleans', 'Oswego', 'Otsego', 'Putnam', 'Queens', 'Rensselaer', 'Richmond', 'Rockland', 'Saratoga', 'Schenectady', 'Schoharie', 'Schuyler', 'Seneca', 'Steuben', 'Suffolk', 'Sullivan', 'Tioga', 'Tompkins', 'Ulster', 'Warren', 'Washington', 'Wayne', 'Westchester', 'Wyoming', 'Yates'].map(c => ({value: c.toUpperCase(), label: c}))}
+            />
           </div>
           <div className="card">
             <h3 className="section-title" style={{ marginBottom: 16 }}>Demographics</h3>
@@ -642,7 +659,19 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
           <div className="card">
             <h3 className="section-title" style={{ marginBottom: 16 }}>Intake Info</h3>
             <EditableField label="Source" value={lead.source?.replace(/_/g, ' ')} field="source" onSave={handleFieldSave} />
-            <EditableField label="Service Type" value={lead.serviceType} field="serviceType" onSave={handleFieldSave} />
+            <EditableField 
+              label="Service Type" 
+              value={lead.serviceType} 
+              field="serviceType" 
+              onSave={handleFieldSave}
+              options={[
+                {value: 'HHA/PCA', label: 'HHA / PCA'},
+                {value: 'NHTD', label: 'NHTD'},
+                {value: 'TBI', label: 'TBI'},
+                {value: 'CHHA', label: 'CHHA'},
+                {value: 'OTHER', label: 'Other'}
+              ]}
+            />
             <div className="editable-field">
               <span className="editable-label">Call Attempts</span>
               <span className="editable-value">{lead.totalCallAttempts}</span>

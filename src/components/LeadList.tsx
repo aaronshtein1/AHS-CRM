@@ -20,7 +20,7 @@ const ALL_STATUSES = [
 function CreateLeadModal({ token, onClose, onCreated }: { token: string; onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({
     firstName: '', lastName: '', phone: '', email: '',
-    source: 'PHONE_INQUIRY', serviceType: 'CDPAP', county: '', payerType: 'MEDICAID', notes: '',
+    source: 'PHONE_INQUIRY', serviceType: 'HHA/PCA', county: '', payerType: 'MEDICAID', notes: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -85,12 +85,9 @@ function CreateLeadModal({ token, onClose, onCreated }: { token: string; onClose
             <div className="form-group">
               <label className="form-label">Service Type</label>
               <select className="form-select" value={form.serviceType} onChange={e => setForm({ ...form, serviceType: e.target.value })} id="create-lead-service">
-                <option value="CDPAP">CDPAP</option>
-                <option value="TRADITIONAL_HHA">Traditional HHA</option>
-                <option value="TRADITIONAL_PCA">Traditional PCA</option>
+                <option value="HHA/PCA">HHA / PCA</option>
                 <option value="NHTD">NHTD</option>
                 <option value="TBI">TBI</option>
-                <option value="HCSS">HCSS</option>
                 <option value="CHHA">CHHA</option>
                 <option value="OTHER">Other</option>
               </select>
@@ -99,7 +96,10 @@ function CreateLeadModal({ token, onClose, onCreated }: { token: string; onClose
           <div className="grid-2">
             <div className="form-group">
               <label className="form-label">County</label>
-              <input className="form-input" value={form.county} onChange={e => setForm({ ...form, county: e.target.value })} placeholder="e.g. BRONX" id="create-lead-county" />
+              <select className="form-select" value={form.county} onChange={e => setForm({ ...form, county: e.target.value })} id="create-lead-county">
+                <option value="">Select County...</option>
+                {['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 'Chautauqua', 'Chemung', 'Chenango', 'Clinton', 'Columbia', 'Cortland', 'Delaware', 'Dutchess', 'Erie', 'Essex', 'Franklin', 'Fulton', 'Genesee', 'Greene', 'Hamilton', 'Herkimer', 'Jefferson', 'Kings', 'Lewis', 'Livingston', 'Madison', 'Monroe', 'Montgomery', 'Nassau', 'New York', 'Niagara', 'Oneida', 'Onondaga', 'Ontario', 'Orange', 'Orleans', 'Oswego', 'Otsego', 'Putnam', 'Queens', 'Rensselaer', 'Richmond', 'Rockland', 'Saratoga', 'Schenectady', 'Schoharie', 'Schuyler', 'Seneca', 'Steuben', 'Suffolk', 'Sullivan', 'Tioga', 'Tompkins', 'Ulster', 'Warren', 'Washington', 'Wayne', 'Westchester', 'Wyoming', 'Yates'].map(c => <option key={c} value={c.toUpperCase()}>{c}</option>)}
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Payer Type</label>
