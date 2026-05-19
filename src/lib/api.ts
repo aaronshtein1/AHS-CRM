@@ -73,8 +73,10 @@ export const api = {
     apiFetch('/api/processes/templates', { token }),
   startProcess: (token: string, data: any) =>
     apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token }),
-  advanceProcess: (token: string, instanceId: string) =>
-    apiFetch(`/api/processes/${instanceId}/advance`, { method: 'POST', token }),
+  advanceProcess: (token: string, instanceId: string, data?: { collectedDates?: Record<string, string> }) =>
+    apiFetch(`/api/processes/${instanceId}/advance`, { method: 'POST', body: JSON.stringify(data || {}), token }),
+  closeProcess: (token: string, instanceId: string, data: { outcome: 'WON' | 'LOST'; lostReason?: string; collectedDates?: Record<string, string> }) =>
+    apiFetch(`/api/processes/${instanceId}/close`, { method: 'POST', body: JSON.stringify(data), token }),
 
   // Tasks
   getTasks: (token: string, params?: Record<string, string>) => {

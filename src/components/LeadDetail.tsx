@@ -1,13 +1,30 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone, Mail, MapPin, Building2, MessageSquare, ArrowRightCircle,
   RefreshCw, ChevronRight, CheckCircle2, Circle, Clock, Plus,
-  Edit3, Save, X, PlayCircle, Shield, HeartPulse, FileText, Activity
+  Edit3, Save, X, PlayCircle, Shield, HeartPulse, FileText, Activity,
+  Trophy, XCircle, AlertTriangle
 } from 'lucide-react';
 import { api } from '@/lib/api';
+
+const LOST_REASONS = [
+  'No longer interested',
+  'Chose a different agency',
+  'Moved out of service area',
+  'Medicaid ineligible',
+  'Insurance does not cover services',
+  'Hospitalized / entering facility',
+  'Deceased',
+  'Family decided against services',
+  'Unable to reach after multiple attempts',
+  'Financially ineligible (private pay declined)',
+  'Duplicate / entered in error',
+  'Other',
+];
+
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   NEW: ['ATTEMPTING_CONTACT', 'CONTACTED', 'UNQUALIFIED'],
@@ -55,11 +72,44 @@ function EditableField({ label, value, field, onSave }: {
 
 function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: string; onRefresh: () => void }) {
   const [advancing, setAdvancing] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closingOutcome, setClosingOutcome] = useState<'WON' | 'LOST' | null>(null);
+  const [lostReason, setLostReason] = useState('');
+  const [customReason, setCustomReason] = useState('');
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [dateValues, setDateValues] = useState<Record<string, string>>({});
+  const [dateTarget, setDateTarget] = useState<'advance' | 'close-won' | 'close-lost' | null>(null);
 
-  const handleAdvance = async () => {
+  const activeStage = instance.stageInstances.find((si: any) => si.status === 'ACTIVE');
+  const isOnFinalStage = activeStage?.stageTemplate?.isFinalStage === true;
+
+  // Find the next stage and its collectDates definition
+  const nextStage = !isOnFinalStage
+    ? instance.stageInstances.find((si: any) => si.stageTemplate.order === (activeStage?.stageTemplate?.order || 0) + 1)
+    : null;
+  const nextCollectDates: any[] = (() => {
+    try { return JSON.parse(nextStage?.stageTemplate?.collectDates || '[]'); } catch { return []; }
+  })();
+  const currentCollectDates: any[] = (() => {
+    try { return JSON.parse(activeStage?.stageTemplate?.collectDates || '[]'); } catch { return []; }
+  })();
+
+  const handleAdvanceClick = () => {
+    if (nextCollectDates.length > 0) {
+      // Show date collection modal before advancing
+      setDateValues({});
+      setDateTarget('advance');
+      setShowDateModal(true);
+    } else {
+      doAdvance({});
+    }
+  };
+
+  const doAdvance = async (collectedDates: Record<string, string>) => {
     setAdvancing(true);
     try {
-      await api.advanceProcess(token, instance.id);
+      await api.advanceProcess(token, instance.id, { collectedDates });
+      setShowDateModal(false);
       onRefresh();
     } catch (err) {
       console.error(err);
@@ -68,22 +118,97 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
     }
   };
 
+  const handleCloseClick = (outcome: 'WON' | 'LOST') => {
+    setClosingOutcome(outcome);
+    setLostReason('');
+    setCustomReason('');
+    if (currentCollectDates.length > 0) {
+      setDateValues({});
+      setDateTarget(outcome === 'WON' ? 'close-won' : 'close-lost');
+      setShowDateModal(true);
+    } else {
+      setShowCloseModal(true);
+    }
+  };
+
+  const handleDateModalConfirm = () => {
+    if (dateTarget === 'advance') {
+      doAdvance(dateValues);
+    } else {
+      // Dates collected, now show the close modal
+      setShowDateModal(false);
+      setShowCloseModal(true);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!closingOutcome) return;
+    const reason = lostReason === 'Other' ? customReason : lostReason;
+    if (closingOutcome === 'LOST' && !reason) return;
+    setAdvancing(true);
+    try {
+      await api.closeProcess(token, instance.id, {
+        outcome: closingOutcome,
+        lostReason: closingOutcome === 'LOST' ? reason : undefined,
+        collectedDates: dateValues,
+      });
+      setShowCloseModal(false);
+      onRefresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAdvancing(false);
+    }
+  };
+
+  // For the date modal — determine which dates to collect
+  const datesToCollect = dateTarget === 'advance' ? nextCollectDates : currentCollectDates;
+  const requiredDatesFilled = datesToCollect
+    .filter((d: any) => d.required)
+    .every((d: any) => dateValues[d.key]);
+
   return (
     <div className="process-card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div>
           <h4 style={{ margin: 0, fontWeight: 700 }}>{instance.processTemplate.name}</h4>
           <span className={`status-badge status-${instance.status.toLowerCase()}`}>{instance.status}</span>
+          {instance.outcome && (
+            <span style={{ marginLeft: 8, fontWeight: 600, color: instance.outcome === 'WON' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+              {instance.outcome === 'WON' ? '✅ Won' : '❌ Lost'}
+            </span>
+          )}
         </div>
         {instance.status === 'ACTIVE' && (
-          <button className="btn btn-primary btn-sm" onClick={handleAdvance} disabled={advancing}>
-            <ChevronRight size={14} /> {advancing ? 'Advancing...' : 'Advance Stage'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isOnFinalStage ? (
+              <>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--accent-green)', color: '#fff', border: 'none' }}
+                  onClick={() => handleCloseClick('WON')}
+                >
+                  <Trophy size={14} /> Close Won
+                </button>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--accent-red)', color: '#fff', border: 'none' }}
+                  onClick={() => handleCloseClick('LOST')}
+                >
+                  <XCircle size={14} /> Close Lost
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={handleAdvanceClick} disabled={advancing}>
+                <ChevronRight size={14} /> {advancing ? 'Advancing...' : 'Advance Stage'}
+              </button>
+            )}
+          </div>
         )}
       </div>
+
       <div className="stepper">
         {instance.stageInstances.map((si: any, idx: number) => {
-          const isFirst = idx === 0;
           const isCurrent = si.status === 'ACTIVE';
           const isCompleted = si.status === 'COMPLETED';
           return (
@@ -96,9 +221,155 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
           );
         })}
       </div>
+
+      {/* Date Collection Modal */}
+      <AnimatePresence>
+        {showDateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+            }}
+            onClick={() => setShowDateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 12, padding: 28, maxWidth: 460, width: '90%'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <Clock size={22} color="var(--accent-blue)" />
+                <h3 style={{ margin: 0 }}>Schedule Key Dates</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+                Enter the scheduled dates for the next stage. Tasks will be auto-created from these dates.
+              </p>
+              {datesToCollect.map((dateDef: any) => (
+                <div key={dateDef.key} style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {dateDef.label} {dateDef.required && <span style={{ color: 'var(--accent-red)' }}>*</span>}
+                  </label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={dateValues[dateDef.key] || ''}
+                    onChange={e => setDateValues(prev => ({ ...prev, [dateDef.key]: e.target.value }))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowDateModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleDateModalConfirm}
+                  disabled={!requiredDatesFilled || advancing}
+                >
+                  {advancing ? 'Processing...' : dateTarget === 'advance' ? 'Confirm & Advance' : 'Continue'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Close Modal */}
+      <AnimatePresence>
+        {showCloseModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+            }}
+            onClick={() => setShowCloseModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 12, padding: 28, maxWidth: 420, width: '90%'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {closingOutcome === 'WON' ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <Trophy size={22} color="var(--accent-green)" />
+                    <h3 style={{ margin: 0 }}>Close as Won</h3>
+                  </div>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>
+                    Mark this process as successfully closed. The lead will be updated accordingly.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowCloseModal(false)}>Cancel</button>
+                    <button
+                      className="btn btn-sm"
+                      style={{ background: 'var(--accent-green)', color: '#fff', border: 'none' }}
+                      onClick={handleClose} disabled={advancing}
+                    >
+                      {advancing ? 'Closing...' : 'Confirm — Close Won'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                    <AlertTriangle size={22} color="var(--accent-amber)" />
+                    <h3 style={{ margin: 0 }}>Close as Lost</h3>
+                  </div>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Select the reason this lead did not convert:</p>
+                  <select
+                    className="form-input"
+                    value={lostReason}
+                    onChange={e => setLostReason(e.target.value)}
+                    style={{ marginBottom: 12 }}
+                  >
+                    <option value="">— Select a reason —</option>
+                    {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  {lostReason === 'Other' && (
+                    <input
+                      className="form-input"
+                      placeholder="Describe the reason..."
+                      value={customReason}
+                      onChange={e => setCustomReason(e.target.value)}
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowCloseModal(false)}>Cancel</button>
+                    <button
+                      className="btn btn-sm"
+                      style={{ background: 'var(--accent-red)', color: '#fff', border: 'none' }}
+                      onClick={handleClose}
+                      disabled={advancing || !lostReason || (lostReason === 'Other' && !customReason)}
+                    >
+                      {advancing ? 'Closing...' : 'Confirm — Close Lost'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
 
 function TaskCard({ task, token, onRefresh }: { task: any; token: string; onRefresh: () => void }) {
   const handleComplete = async () => {
@@ -140,6 +411,9 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<any[]>([]);
   const [showStartProcess, setShowStartProcess] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [lostReason, setLostReason] = useState('');
+  const [customLostReason, setCustomLostReason] = useState('');
 
   const loadLead = useCallback(async () => {
     try {
@@ -166,8 +440,30 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
 
   const handleStatusChange = async (newStatus: string) => {
     if (!lead) return;
+    // Intercept UNQUALIFIED — require lost reason first
+    if (newStatus === 'UNQUALIFIED') {
+      setPendingStatus('UNQUALIFIED');
+      setLostReason('');
+      setCustomLostReason('');
+      return;
+    }
     try {
       await api.updateLead(token, lead.id, { status: newStatus });
+      loadLead();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleConfirmUnqualified = async () => {
+    if (!lead) return;
+    const reason = lostReason === 'Other' ? customLostReason : lostReason;
+    if (!reason) return;
+    try {
+      await api.updateLead(token, lead.id, { status: 'UNQUALIFIED', lostReason: reason });
+      setPendingStatus(null);
+      setLostReason('');
+      setCustomLostReason('');
       loadLead();
     } catch (err: any) {
       alert(err.message);
@@ -221,6 +517,72 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {/* Unqualified / Lost Reason Modal */}
+      <AnimatePresence>
+        {pendingStatus === 'UNQUALIFIED' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+            }}
+            onClick={() => setPendingStatus(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 12, padding: 28, maxWidth: 440, width: '90%'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <AlertTriangle size={22} color="var(--accent-amber)" />
+                <h3 style={{ margin: 0 }}>Mark as Unqualified</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
+                Please select the reason this lead did not qualify:
+              </p>
+              <select
+                className="form-input"
+                value={lostReason}
+                onChange={e => setLostReason(e.target.value)}
+                style={{ marginBottom: 12 }}
+                id="lost-reason-select"
+              >
+                <option value="">— Select a reason —</option>
+                {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              {lostReason === 'Other' && (
+                <input
+                  className="form-input"
+                  placeholder="Describe the reason..."
+                  value={customLostReason}
+                  onChange={e => setCustomLostReason(e.target.value)}
+                  style={{ marginBottom: 12 }}
+                />
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setPendingStatus(null)}>Cancel</button>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--accent-red)', color: '#fff', border: 'none' }}
+                  onClick={handleConfirmUnqualified}
+                  disabled={!lostReason || (lostReason === 'Other' && !customLostReason)}
+                  id="confirm-unqualified-btn"
+                >
+                  Confirm — Mark Unqualified
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="lead-detail-header">
         <div>
           <button onClick={onBack} className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} id="lead-detail-back">
