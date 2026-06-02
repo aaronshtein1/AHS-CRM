@@ -99,4 +99,8 @@ export const api = {
     apiFetch('/api/users', { method: 'POST', body: JSON.stringify(data), token }),
   updateUser: (token: string, id: string, data: any) =>
     apiFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }),
+
+  // Performance
+  getPerformance: (token: string) =>
+    apiFetch('/api/performance', { token }),
 };

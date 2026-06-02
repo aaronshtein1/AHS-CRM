@@ -9,8 +9,9 @@ import LeadDetail from '@/components/LeadDetail';
 import Tasks from '@/components/Tasks';
 import Settings from '@/components/Settings';
 import LoginScreen from '@/components/LoginScreen';
+import PerformanceReview from '@/components/PerformanceReview';
 import {
-  LayoutDashboard, GitBranch, Users, CheckSquare, Settings as SettingsIcon, LogOut
+  LayoutDashboard, GitBranch, Users, CheckSquare, Settings as SettingsIcon, LogOut, TrendingUp
 } from 'lucide-react';
 
 interface User {
@@ -52,6 +53,7 @@ export default function Home() {
     { id: 'pipeline', label: 'Pipeline', icon: GitBranch },
     { id: 'leads', label: 'All Leads', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+    { id: 'performance', label: 'Performance', icon: TrendingUp, adminOnly: true },
     { id: 'settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
   ];
 
@@ -99,6 +101,7 @@ export default function Home() {
           <LeadDetail token={token} leadId={selectedLeadId} onBack={() => setView('leads')} user={user} />
         )}
         {view === 'tasks' && <Tasks token={token} userId={user.id} onSelectLead={handleSelectLead} />}
+        {view === 'performance' && <PerformanceReview token={token} onSelectLead={handleSelectLead} />}
         {view === 'settings' && <Settings token={token} user={user} />}
       </main>
     </div>
