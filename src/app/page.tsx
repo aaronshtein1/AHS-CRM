@@ -27,6 +27,7 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string>('');
   const [view, setView] = useState<string>('dashboard');
+  const [viewFilter, setViewFilter] = useState<string>('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   const handleLogin = (u: User, t: string) => {
@@ -39,11 +40,20 @@ export default function Home() {
     setUser(null);
     setToken('');
     setView('dashboard');
+    setViewFilter('');
   };
 
   const handleSelectLead = (id: string) => {
     setSelectedLeadId(id);
     setView('lead-detail');
+  };
+
+  const handleNavigate = (targetView: string, targetFilter: string = '') => {
+    setViewFilter(targetFilter);
+    setView(targetView);
+    if (targetView !== 'lead-detail') {
+      setSelectedLeadId(null);
+    }
   };
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
@@ -73,7 +83,7 @@ export default function Home() {
             <button
               key={item.id}
               className={`nav-item ${view === item.id || (view === 'lead-detail' && item.id === 'leads') ? 'active' : ''}`}
-              onClick={() => { setView(item.id); setSelectedLeadId(null); }}
+              onClick={() => handleNavigate(item.id)}
               id={`nav-${item.id}`}
             >
               <item.icon size={18} />
@@ -94,9 +104,9 @@ export default function Home() {
       </aside>
 
       <main className="main-content">
-        {view === 'dashboard' && <Dashboard token={token} onSelectLead={handleSelectLead} />}
+        {view === 'dashboard' && <Dashboard token={token} user={user} onSelectLead={handleSelectLead} onNavigate={handleNavigate} />}
         {view === 'pipeline' && <Pipeline token={token} onSelectLead={handleSelectLead} />}
-        {view === 'leads' && <LeadList token={token} onSelectLead={handleSelectLead} />}
+        {view === 'leads' && <LeadList token={token} initialFilter={viewFilter} onSelectLead={handleSelectLead} />}
         {view === 'lead-detail' && selectedLeadId && (
           <LeadDetail token={token} leadId={selectedLeadId} onBack={() => setView('leads')} user={user} />
         )}

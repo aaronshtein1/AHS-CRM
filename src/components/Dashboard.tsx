@@ -8,17 +8,20 @@ import {
   HeartPulse, TrendingUp
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import Tasks from '@/components/Tasks';
 
-function KPICard({ label, value, target, color, icon: Icon, delay = 0 }: {
+function KPICard({ label, value, target, color, icon: Icon, delay = 0, onClick }: {
   label: string; value: string | number; target?: string; color: string;
-  icon: any; delay?: number;
+  icon: any; delay?: number; onClick?: () => void;
 }) {
   return (
     <motion.div
-      className={`kpi-card ${color}`}
+      className={`kpi-card ${color} ${onClick ? 'clickable' : ''}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
+      onClick={onClick}
+      style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
       <div className={`kpi-icon ${color}`}>
         <Icon size={20} />
@@ -30,7 +33,7 @@ function KPICard({ label, value, target, color, icon: Icon, delay = 0 }: {
   );
 }
 
-export default function Dashboard({ token, onSelectLead }: { token: string, onSelectLead?: (id: string) => void }) {
+export default function Dashboard({ token, user, onSelectLead, onNavigate }: { token: string, user: any, onSelectLead?: (id: string) => void, onNavigate?: (view: string, filter?: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,14 +69,14 @@ export default function Dashboard({ token, onSelectLead }: { token: string, onSe
       </div>
 
       <div className="kpi-grid">
-        <KPICard label="Total Leads" value={stats.counts.totalLeads} color="blue" icon={Users} delay={0} />
-        <KPICard label="Active Patients" value={stats.counts.activePatients} color="cyan" icon={HeartPulse} delay={0.05} />
-        <KPICard label="New Today" value={stats.counts.newLeadsToday} color="green" icon={UserPlus} delay={0.1} />
+        <KPICard label="Total Leads" value={stats.counts.totalLeads} color="blue" icon={Users} delay={0} onClick={() => onNavigate?.('leads', '')} />
+        <KPICard label="Active Patients" value={stats.counts.activePatients} color="cyan" icon={HeartPulse} delay={0.05} onClick={() => onNavigate?.('leads', 'ACTIVE_PATIENT')} />
+        <KPICard label="New Today" value={stats.counts.newLeadsToday} color="green" icon={UserPlus} delay={0.1} onClick={() => onNavigate?.('leads', 'NEW')} />
         <KPICard label="Contact Compliance" value={`${stats.kpis.contactAttemptCompliance}%`} target="Target: ≥ 98%" color={stats.kpis.contactAttemptCompliance >= 98 ? 'green' : 'amber'} icon={CheckCircle2} delay={0.15} />
-        <KPICard label="Stale New Leads" value={stats.kpis.staleNewLeads} target="Target: 0 (< 24h)" color={stats.kpis.staleNewLeads > 0 ? 'red' : 'green'} icon={Clock} delay={0.2} />
+        <KPICard label="Stale New Leads" value={stats.kpis.staleNewLeads} target="Target: 0 (< 24h)" color={stats.kpis.staleNewLeads > 0 ? 'red' : 'green'} icon={Clock} delay={0.2} onClick={() => onNavigate?.('leads', 'NEW')} />
         <KPICard label="Qualification Rate" value={`${stats.kpis.qualificationRate}%`} target="Target: ≥ 90%" color="purple" icon={Target} delay={0.25} />
-        <KPICard label="Open Tasks" value={stats.counts.openTasks} color={stats.counts.overdueTasks > 0 ? 'amber' : 'blue'} icon={CheckSquare} delay={0.3} />
-        <KPICard label="Overdue Tasks" value={stats.counts.overdueTasks} color={stats.counts.overdueTasks > 0 ? 'red' : 'green'} icon={AlertOctagon} delay={0.35} />
+        <KPICard label="Open Tasks" value={stats.counts.openTasks} color={stats.counts.overdueTasks > 0 ? 'amber' : 'blue'} icon={CheckSquare} delay={0.3} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
+        <KPICard label="Overdue Tasks" value={stats.counts.overdueTasks} color={stats.counts.overdueTasks > 0 ? 'red' : 'green'} icon={AlertOctagon} delay={0.35} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
         <KPICard label="Conversion Rate" value={`${stats.kpis.conversionRate}%`} color="green" icon={ArrowRightCircle} delay={0.4} />
         <KPICard label="Active Processes" value={stats.counts.activeProcesses} color="purple" icon={TrendingUp} delay={0.45} />
       </div>
@@ -131,6 +134,10 @@ export default function Dashboard({ token, onSelectLead }: { token: string, onSe
             {activity.length === 0 && <div className="empty-state"><p>No recent activity</p></div>}
           </div>
         </motion.div>
+      </div>
+
+      <div id="dashboard-tasks" style={{ marginTop: 32 }}>
+        <Tasks token={token} userId={user.id} onSelectLead={onSelectLead} />
       </div>
     </div>
   );

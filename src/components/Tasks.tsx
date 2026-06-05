@@ -103,11 +103,63 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
   );
 }
 
-export default function Tasks({ token, userId, onSelectLead }: { token: string; userId: string; onSelectLead?: (id: string) => void }) {
+function RescheduleTaskModal({ token, taskId, currentDue, onClose, onRescheduled }: {
+  token: string; taskId: string; currentDue: string; onClose: () => void; onRescheduled: () => void;
+}) {
+  const [newDueAt, setNewDueAt] = useState(currentDue ? currentDue.split('T')[0] : '');
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.updateTask(token, taskId, {
+        newDueAt: new Date(newDueAt).toISOString(),
+        rescheduleReason: reason
+      });
+      onRescheduled();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div className="modal" onClick={e => e.stopPropagation()} initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 className="modal-title" style={{ margin: 0 }}>Reschedule Task</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">New Due Date *</label>
+            <input className="form-input" type="date" required value={newDueAt} onChange={e => setNewDueAt(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Reason for Reschedule *</label>
+            <textarea className="form-textarea" required value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this being pushed back?" />
+          </div>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 16 }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Updating...' : 'Reschedule Task'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { token: string; userId: string; onSelectLead?: (id: string) => void; defaultFilter?: string }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(defaultFilter || 'all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [rescheduleTask, setRescheduleTask] = useState<any>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -134,6 +186,12 @@ export default function Tasks({ token, userId, onSelectLead }: { token: string; 
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    if (defaultFilter && defaultFilter !== filter) {
+      setFilter(defaultFilter);
+    }
+  }, [defaultFilter]);
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -200,6 +258,11 @@ export default function Tasks({ token, userId, onSelectLead }: { token: string; 
                         {task.assignedTo && <span>{task.assignedTo.firstName} {task.assignedTo.lastName}</span>}
                       </div>
                     </div>
+                    {task.status !== 'COMPLETED' && (
+                      <button className="btn-icon" onClick={() => setRescheduleTask(task)} title="Reschedule Task">
+                        <Clock size={16} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
@@ -210,6 +273,9 @@ export default function Tasks({ token, userId, onSelectLead }: { token: string; 
 
       {showCreateModal && (
         <CreateTaskModal token={token} userId={userId} onClose={() => setShowCreateModal(false)} onCreated={() => { setShowCreateModal(false); loadTasks(); }} />
+      )}
+      {rescheduleTask && (
+        <RescheduleTaskModal token={token} taskId={rescheduleTask.id} currentDue={rescheduleTask.dueAt} onClose={() => setRescheduleTask(null)} onRescheduled={() => { setRescheduleTask(null); loadTasks(); }} />
       )}
     </div>
   );

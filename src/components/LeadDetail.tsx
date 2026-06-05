@@ -90,6 +90,13 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
   const [showDateModal, setShowDateModal] = useState(false);
   const [dateValues, setDateValues] = useState<Record<string, string>>({});
   const [dateTarget, setDateTarget] = useState<'advance' | 'close-won' | 'close-lost' | null>(null);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    // Re-render every minute to keep countdown clock fresh
+    const interval = setInterval(() => setTick(t => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const activeStage = instance.stageInstances.find((si: any) => si.status === 'ACTIVE');
   const isOnFinalStage = activeStage?.stageTemplate?.isFinalStage === true;
@@ -222,12 +229,51 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
         {instance.stageInstances.map((si: any, idx: number) => {
           const isCurrent = si.status === 'ACTIVE';
           const isCompleted = si.status === 'COMPLETED';
+
+          let timeLabel = null;
+          let timeColor = 'var(--text-muted)';
+          
+          if (si.dueAt) {
+            const due = new Date(si.dueAt);
+            const now = new Date();
+            if (isCompleted) {
+               const completed = si.completedAt ? new Date(si.completedAt) : now;
+               if (completed > due) {
+                 timeLabel = '🟠 Completed Late';
+                 timeColor = 'var(--accent-amber)';
+               } else {
+                 timeLabel = '✅ Completed On Time';
+                 timeColor = 'var(--accent-green)';
+               }
+            } else if (isCurrent) {
+               const diffMs = due.getTime() - now.getTime();
+               const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+               const hours = Math.floor((Math.abs(diffMs) % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+               
+               if (diffMs < 0) {
+                 timeLabel = `🔴 Late (Due: ${due.toLocaleDateString()})`;
+                 timeColor = 'var(--accent-red)';
+               } else {
+                 const timeStr = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+                 timeLabel = `⏳ ${timeStr}`;
+                 timeColor = 'var(--accent-blue)';
+               }
+            }
+          }
+
           return (
             <div key={si.id} className={`stepper-step ${isCurrent ? 'current' : ''} ${isCompleted ? 'completed' : ''}`}>
               <div className="stepper-indicator">
                 {isCompleted ? <CheckCircle2 size={18} /> : isCurrent ? <PlayCircle size={18} /> : <Circle size={14} />}
               </div>
-              <div className="stepper-label">{si.stageTemplate.name}</div>
+              <div style={{ flex: 1 }}>
+                <div className="stepper-label">{si.stageTemplate.name}</div>
+                {timeLabel && (
+                  <div style={{ fontSize: 11, color: timeColor, marginTop: 4, fontWeight: 500 }}>
+                    {timeLabel}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

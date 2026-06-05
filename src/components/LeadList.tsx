@@ -130,13 +130,19 @@ function CreateLeadModal({ token, onClose, onCreated }: { token: string; onClose
   );
 }
 
-export default function LeadList({ token, onSelectLead }: { token: string; onSelectLead: (id: string) => void }) {
+export default function LeadList({ token, onSelectLead, initialFilter }: { token: string; onSelectLead: (id: string) => void; initialFilter?: string }) {
   const [leads, setLeads] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(initialFilter || '');
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  useEffect(() => {
+    if (initialFilter !== undefined && initialFilter !== statusFilter) {
+      setStatusFilter(initialFilter);
+    }
+  }, [initialFilter]);
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
