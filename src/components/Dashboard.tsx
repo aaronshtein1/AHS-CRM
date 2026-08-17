@@ -33,6 +33,135 @@ function KPICard({ label, value, target, color, icon: Icon, delay = 0, onClick }
   );
 }
 
+function ManagerSlaAlerts({ token, onSelectLead }: { token: string; onSelectLead?: (id: string) => void }) {
+  const [leads, setLeads] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getLeads(token, { limit: '100' })
+      .then(res => {
+        if (res && res.leads) {
+          setLeads(res.leads);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  if (loading) return null;
+
+  const criticalLeads = leads.filter(l => l.riskLevel === 'Critical');
+  const checkbackViolations = leads.filter(l => l.isCheckbackOverdue || l.isCheckbackTooFar);
+  const holdBlockers = leads.filter(l => l.status === 'ON_HOLD' && l.blockerType);
+
+  if (criticalLeads.length === 0 && checkbackViolations.length === 0 && holdBlockers.length === 0) {
+    return (
+      <div className="card" style={{ marginTop: 24 }}>
+        <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 700, margin: 0 }}>
+          <CheckCircle2 size={16} color="var(--accent-green)" /> Manager SLA &amp; Compliance Hub
+        </h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '8px 0 0 0' }}>All active cases are currently compliant with checkback policies and under normal risk thresholds.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 32 }}>
+      <div className="section-header" style={{ marginBottom: 16 }}>
+        <h3 className="section-title" style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Manager SLA &amp; Compliance Hub</h3>
+      </div>
+      <div className="grid-3" style={{ gap: 20 }}>
+        {/* Executive Escalations */}
+        <div className="card" style={{ borderLeft: criticalLeads.length > 0 ? '4px solid var(--accent-red)' : '1px solid var(--border)', padding: 20 }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: criticalLeads.length > 0 ? 'var(--accent-red)' : 'inherit' }}>
+            <AlertTriangle size={16} /> Executive Escalations ({criticalLeads.length})
+          </h4>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 16px 0', lineHeight: 1.4 }}>Cases exceeding the critical risk threshold (&ge;75 pts) needing immediate attention.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {criticalLeads.map(l => (
+              <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface-raised)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                <div>
+                  <span 
+                    style={{ color: 'var(--accent-blue)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                    onClick={() => onSelectLead?.(l.id)}
+                    className="hover-underline"
+                  >
+                    {l.firstName} {l.lastName}
+                  </span>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Status: {l.status.replace(/_/g, ' ')}</div>
+                </div>
+                <span className="priority-badge priority-high" style={{ padding: '2px 6px', fontSize: 10 }}>{l.riskScore}% Risk</span>
+              </div>
+            ))}
+            {criticalLeads.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 8 }}>No critical escalations</div>}
+          </div>
+        </div>
+
+        {/* Checkback SLA Violations */}
+        <div className="card" style={{ borderLeft: checkbackViolations.length > 0 ? '4px solid var(--accent-amber)' : '1px solid var(--border)', padding: 20 }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: checkbackViolations.length > 0 ? 'var(--accent-amber)' : 'inherit' }}>
+            <Clock size={16} /> Checkback Violations ({checkbackViolations.length})
+          </h4>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 16px 0', lineHeight: 1.4 }}>Cases with overdue checkbacks or checkback dates scheduled too far in the future.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {checkbackViolations.map(l => (
+              <div key={l.id} style={{ padding: '8px 12px', background: 'var(--surface-raised)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span 
+                    style={{ color: 'var(--accent-blue)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                    onClick={() => onSelectLead?.(l.id)}
+                    className="hover-underline"
+                  >
+                    {l.firstName} {l.lastName}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--accent-red)', fontWeight: 600 }}>
+                    {l.isCheckbackOverdue ? 'Overdue' : 'Far-Future'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {l.isCheckbackOverdue 
+                    ? `Overdue since ${l.checkBackDate ? new Date(l.checkBackDate).toLocaleDateString() : 'N/A'}`
+                    : `Checkback too distant for ${l.status.replace(/_/g, ' ')}`
+                  }
+                </div>
+              </div>
+            ))}
+            {checkbackViolations.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 8 }}>No checkback violations</div>}
+          </div>
+        </div>
+
+        {/* Hold Blockers */}
+        <div className="card" style={{ borderLeft: holdBlockers.length > 0 ? '4px solid var(--accent-blue)' : '1px solid var(--border)', padding: 20 }}>
+          <h4 style={{ margin: '0 0 8px 0', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Activity size={16} /> Active Blocker Bottlenecks ({holdBlockers.length})
+          </h4>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 16px 0', lineHeight: 1.4 }}>Cases placed ON HOLD with active system blockers preventing progress.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {holdBlockers.map(l => (
+              <div key={l.id} style={{ padding: '8px 12px', background: 'var(--surface-raised)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span 
+                    style={{ color: 'var(--accent-blue)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                    onClick={() => onSelectLead?.(l.id)}
+                    className="hover-underline"
+                  >
+                    {l.firstName} {l.lastName}
+                  </span>
+                  <span style={{ fontSize: 10, background: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                    {l.blockerType.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                {l.blockerNotes && <div style={{ fontSize: 11, color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: 2 }}>{l.blockerNotes}</div>}
+              </div>
+            ))}
+            {holdBlockers.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 8 }}>No active blocker bottlenecks</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ token, user, onSelectLead, onNavigate }: { token: string, user: any, onSelectLead?: (id: string) => void, onNavigate?: (view: string, filter?: string) => void }) {
   const [stats, setStats] = useState<any>(null);
   const [activity, setActivity] = useState<any[]>([]);
@@ -135,6 +264,10 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
           </div>
         </motion.div>
       </div>
+
+      {user.role === 'ADMIN' && (
+        <ManagerSlaAlerts token={token} onSelectLead={onSelectLead} />
+      )}
 
       <div id="dashboard-tasks" style={{ marginTop: 32 }}>
         <Tasks token={token} userId={user.id} onSelectLead={onSelectLead} />

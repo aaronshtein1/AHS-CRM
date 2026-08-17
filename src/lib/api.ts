@@ -103,4 +103,10 @@ export const api = {
   // Performance
   getPerformance: (token: string) =>
     apiFetch('/api/performance', { token }),
+
+  // Settings Configuration
+  getSetting: (token: string, key: string) =>
+    apiFetch(`/api/settings/${key}`, { token }),
+  saveSetting: (token: string, key: string, value: any) =>
+    apiFetch(`/api/settings/${key}`, { method: 'POST', body: JSON.stringify({ value }), token }),
 };

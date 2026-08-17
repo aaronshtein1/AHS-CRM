@@ -471,6 +471,8 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState('');
   const [customLostReason, setCustomLostReason] = useState('');
+  const [blockerType, setBlockerType] = useState('');
+  const [blockerNotes, setBlockerNotes] = useState('');
 
   const loadLead = useCallback(async () => {
     try {
@@ -504,6 +506,13 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
       setCustomLostReason('');
       return;
     }
+    // Intercept ON_HOLD — require blocker first
+    if (newStatus === 'ON_HOLD') {
+      setPendingStatus('ON_HOLD');
+      setBlockerType('');
+      setBlockerNotes('');
+      return;
+    }
     try {
       await api.updateLead(token, lead.id, { status: newStatus });
       loadLead();
@@ -521,6 +530,19 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
       setPendingStatus(null);
       setLostReason('');
       setCustomLostReason('');
+      loadLead();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleConfirmOnHold = async () => {
+    if (!lead || !blockerType) return;
+    try {
+      await api.updateLead(token, lead.id, { status: 'ON_HOLD', blockerType, blockerNotes });
+      setPendingStatus(null);
+      setBlockerType('');
+      setBlockerNotes('');
       loadLead();
     } catch (err: any) {
       alert(err.message);
@@ -640,6 +662,80 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
         )}
       </AnimatePresence>
 
+      {/* On Hold Blocker Modal */}
+      <AnimatePresence>
+        {pendingStatus === 'ON_HOLD' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+            }}
+            onClick={() => setPendingStatus(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 12, padding: 28, maxWidth: 440, width: '90%'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <AlertTriangle size={22} color="var(--accent-red)" />
+                <h3 style={{ margin: 0 }}>Place Case On Hold</h3>
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 13 }}>
+                Specify the primary blocker preventing this case from moving forward. Blocker reasons are mandatory.
+              </p>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Blocker Type *</label>
+                <select
+                  className="form-select form-input"
+                  value={blockerType}
+                  onChange={e => setBlockerType(e.target.value)}
+                  style={{ width: '100%', marginBottom: 12 }}
+                >
+                  <option value="">— Select Blocker —</option>
+                  <option value="MISSING_DOCS">Missing Documentation</option>
+                  <option value="HOUSING_BARRIER">Housing Barrier</option>
+                  <option value="INSURANCE_DELAY">Insurance Delay</option>
+                  <option value="UNREACHABLE">Patient Unreachable</option>
+                  <option value="CLINICAL_REVIEW">Clinical Review Delay</option>
+                  <option value="OTHER">Other Blocker</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Blocker Notes / Details</label>
+                <textarea
+                  className="form-input"
+                  placeholder="Describe the current blocker details..."
+                  value={blockerNotes}
+                  onChange={e => setBlockerNotes(e.target.value)}
+                  rows={3}
+                  style={{ width: '100%', resize: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setPendingStatus(null)}>Cancel</button>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--accent-red)', color: '#fff', border: 'none' }}
+                  onClick={handleConfirmOnHold}
+                  disabled={!blockerType}
+                >
+                  Confirm — Set Hold
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="lead-detail-header">
         <div>
           <button onClick={onBack} className="btn btn-secondary btn-sm" style={{ marginBottom: 16 }} id="lead-detail-back">
@@ -649,6 +745,14 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
           <div style={{ display: 'flex', gap: 12, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className={`status-badge status-${lead.status.toLowerCase().replace(/_/g, '-')}`}>
               {lead.status.replace(/_/g, ' ')}
+            </span>
+            <span className={`risk-badge risk-${lead.riskLevel?.toLowerCase() || 'normal'}`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600,
+              backgroundColor: lead.riskLevel === 'Critical' ? 'rgba(239, 68, 68, 0.15)' : lead.riskLevel === 'High' ? 'rgba(245, 158, 11, 0.15)' : lead.riskLevel === 'Watch' ? 'rgba(234, 179, 8, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+              color: lead.riskLevel === 'Critical' ? 'var(--accent-red)' : lead.riskLevel === 'High' ? 'var(--accent-amber)' : lead.riskLevel === 'Watch' ? 'var(--accent-amber)' : 'var(--accent-green)',
+              border: lead.riskLevel === 'Critical' ? '1px solid rgba(239, 68, 68, 0.3)' : 'none'
+            }}>
+              Risk: {lead.riskLevel || 'Normal'} ({lead.riskScore || 0}%)
             </span>
             {lead.owner && <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Assigned to {lead.owner.firstName} {lead.owner.lastName}</span>}
           </div>
@@ -665,6 +769,28 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
           ))}
         </div>
       </div>
+
+      {/* SLA COMPLIANCE WARN FEED */}
+      {(lead.isCheckbackOverdue || lead.isCheckbackTooFar) && (
+        <div className="card" style={{ display: 'flex', gap: 10, alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: 12, marginBottom: 16 }}>
+          <AlertTriangle size={18} color="var(--accent-red)" style={{ flexShrink: 0 }} />
+          <div style={{ fontSize: 13, color: 'var(--accent-red)' }}>
+            {lead.isCheckbackOverdue && <div><strong>SLA Warning:</strong> Checkback date is overdue. Please log contact activity and schedule a new checkback date.</div>}
+            {lead.isCheckbackTooFar && <div><strong>SLA Warning:</strong> Checkback date is set too far in the future for the current lifecycle stage ({lead.status}). Update to a closer checkback date.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Mandatory Hold Blocker Notice */}
+      {lead.status === 'ON_HOLD' && lead.blockerType && (
+        <div className="card" style={{ display: 'flex', gap: 10, alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.15)', padding: 12, marginBottom: 16 }}>
+          <AlertTriangle size={18} color="var(--accent-amber)" style={{ flexShrink: 0 }} />
+          <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+            <strong>Case On Hold Blocker:</strong> {lead.blockerType.replace(/_/g, ' ')}
+            {lead.blockerNotes && <span style={{ color: 'var(--text-muted)' }}> — {lead.blockerNotes}</span>}
+          </div>
+        </div>
+      )}
 
       <div className="tabs">
         {tabs.map(tab => (

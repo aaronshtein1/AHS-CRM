@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Users, Plus, X, RefreshCw, Shield, Clock, Search
+  Users, Plus, X, RefreshCw, Shield, Clock, Search, TrendingUp
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -178,6 +178,112 @@ function ProcessTemplates({ token }: { token: string }) {
   );
 }
 
+function RiskWeightsManagement({ token }: { token: string }) {
+  const [weights, setWeights] = useState({
+    ageWeight: 0.5,
+    overdueTaskWeight: 15,
+    missingDemoWeight: 10,
+    farFutureCheckbackWeight: 15,
+    inactiveWeight: 20
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getSetting(token, 'risk_weights')
+      .then(res => {
+        if (res && res.value) {
+          setWeights({
+            ageWeight: res.value.ageWeight !== undefined ? res.value.ageWeight : 0.5,
+            overdueTaskWeight: res.value.overdueTaskWeight !== undefined ? res.value.overdueTaskWeight : 15,
+            missingDemoWeight: res.value.missingDemoWeight !== undefined ? res.value.missingDemoWeight : 10,
+            farFutureCheckbackWeight: res.value.farFutureCheckbackWeight !== undefined ? res.value.farFutureCheckbackWeight : 15,
+            inactiveWeight: res.value.inactiveWeight !== undefined ? res.value.inactiveWeight : 20
+          });
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.saveSetting(token, 'risk_weights', weights);
+      alert('Risk weights saved successfully!');
+    } catch (err: any) {
+      alert(`Failed to save: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="empty-state" style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><RefreshCw className="animate-spin" /></div>;
+
+  return (
+    <div className="card" style={{ maxWidth: 600, padding: 24 }}>
+      <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, marginTop: 0 }}>Escalation &amp; Risk Weights Configurator</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24, lineHeight: 1.5 }}>
+        Configure the score points added to leads based on operational SLA and demographic checks. The final score (0-100) determines if a case is flagged for Watch (&ge;25), High Risk (&ge;50), or Executive Escalation (&ge;75).
+      </p>
+
+      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>Lead Age Weight (Points/Day)</label>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)' }}>{weights.ageWeight}</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 8px 0' }}>Score increases by this amount daily since creation (capped at 30 points max)</p>
+          <input type="range" min="0" max="5" step="0.1" style={{ width: '100%' }} value={weights.ageWeight} onChange={e => setWeights({ ...weights, ageWeight: parseFloat(e.target.value) })} />
+        </div>
+
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>Inactivity Penalty (No Update &gt; 7 Days)</label>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)' }}>{weights.inactiveWeight} pts</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 8px 0' }}>Penalty points if no timeline updates have been posted in the last 7 days</p>
+          <input type="range" min="0" max="40" step="1" style={{ width: '100%' }} value={weights.inactiveWeight} onChange={e => setWeights({ ...weights, inactiveWeight: parseInt(e.target.value) })} />
+        </div>
+
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>Overdue Task Penalty</label>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)' }}>{weights.overdueTaskWeight} pts</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 8px 0' }}>Penalty points applied if a lead has any open tasks past their due date</p>
+          <input type="range" min="0" max="40" step="1" style={{ width: '100%' }} value={weights.overdueTaskWeight} onChange={e => setWeights({ ...weights, overdueTaskWeight: parseInt(e.target.value) })} />
+        </div>
+
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>Missing Demographic Penalty (Per Field)</label>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)' }}>{weights.missingDemoWeight} pts</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 8px 0' }}>Points added per missing field (phone, email, county, payer, Medicaid ID) (capped at 30 points max)</p>
+          <input type="range" min="0" max="25" step="1" style={{ width: '100%' }} value={weights.missingDemoWeight} onChange={e => setWeights({ ...weights, missingDemoWeight: parseInt(e.target.value) })} />
+        </div>
+
+        <div className="form-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label className="form-label" style={{ fontWeight: 600, fontSize: 13 }}>Far-Future Checkback Penalty</label>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-blue)' }}>{weights.farFutureCheckbackWeight} pts</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, margin: '0 0 8px 0' }}>Penalty if checkback is set too far out for the current stage (&gt;7d for NEW, &gt;14d for CONTACTED)</p>
+          <input type="range" min="0" max="40" step="1" style={{ width: '100%' }} value={weights.farFutureCheckbackWeight} onChange={e => setWeights({ ...weights, farFutureCheckbackWeight: parseInt(e.target.value) })} />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving Weights...' : 'Save Configuration'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function Settings({ token, user }: { token: string; user: any }) {
   const [tab, setTab] = useState('users');
 
@@ -197,10 +303,16 @@ export default function Settings({ token, user }: { token: string; user: any }) 
         <button className={`tab ${tab === 'processes' ? 'active' : ''}`} onClick={() => setTab('processes')}>
           <Shield size={14} /> Processes
         </button>
+        {user.role === 'ADMIN' && (
+          <button className={`tab ${tab === 'risk' ? 'active' : ''}`} onClick={() => setTab('risk')}>
+            <TrendingUp size={14} /> Risk Weights
+          </button>
+        )}
       </div>
 
       {tab === 'users' && <UserManagement token={token} />}
       {tab === 'processes' && <ProcessTemplates token={token} />}
+      {tab === 'risk' && user.role === 'ADMIN' && <RiskWeightsManagement token={token} />}
     </div>
   );
 }
