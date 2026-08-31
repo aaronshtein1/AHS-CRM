@@ -16,6 +16,12 @@ export interface LeadItem {
   email: string;
   stage: string;
   status: string;
+  source: string;
+  serviceType: string;
+  county: string;
+  payerType: string;
+  totalCallAttempts: number;
+  owner: { firstName: string; lastName: string } | null;
   blockerType: string | null;
   blockerNotes: string | null;
   riskLevel: string;
@@ -58,6 +64,12 @@ const mockState: {
       email: 'eleanor.vance@example.com',
       stage: 'QUALIFIED',
       status: 'ON_HOLD',
+      source: 'HOSPITAL',
+      serviceType: 'HHA/PCA',
+      county: 'KINGS',
+      payerType: 'MEDICAID',
+      totalCallAttempts: 2,
+      owner: { firstName: 'Zevi', lastName: 'Spiegel' },
       blockerType: 'MISSING_DOCS',
       blockerNotes: 'Waiting on physician signatures for Form 485',
       riskLevel: 'High',
@@ -65,7 +77,7 @@ const mockState: {
       assignedTo: 'Zevi Spiegel',
       createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
       updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-      checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(), // Far future checkback (>7d)
+      checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(),
       isCheckbackTooFar: true,
       isCheckbackOverdue: false
     },
@@ -77,7 +89,13 @@ const mockState: {
       phone: '555-014-9923',
       email: 'marcus.brody@example.com',
       stage: 'NEW',
-      status: 'ACTIVE',
+      status: 'NEW',
+      source: 'REFERRAL',
+      serviceType: 'NHTD',
+      county: 'BRONX',
+      payerType: 'MEDICAID',
+      totalCallAttempts: 4,
+      owner: { firstName: 'Sarah', lastName: 'Jenkins' },
       blockerType: null,
       blockerNotes: null,
       riskLevel: 'Critical',
@@ -85,7 +103,7 @@ const mockState: {
       assignedTo: 'Sarah Jenkins',
       createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
       updatedAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-      checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(), // Overdue
+      checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(),
       isCheckbackTooFar: false,
       isCheckbackOverdue: true
     },
@@ -97,7 +115,13 @@ const mockState: {
       phone: '555-017-3341',
       email: 'sophia.m@example.com',
       stage: 'CONTACTED',
-      status: 'ACTIVE',
+      status: 'CONTACTED',
+      source: 'PHONE_INQUIRY',
+      serviceType: 'CDPAP',
+      county: 'QUEENS',
+      payerType: 'MLTC',
+      totalCallAttempts: 1,
+      owner: { firstName: 'Zevi', lastName: 'Spiegel' },
       blockerType: null,
       blockerNotes: null,
       riskLevel: 'Normal',
@@ -111,8 +135,26 @@ const mockState: {
     }
   ],
   tasks: [
-    { id: 'task-1', title: 'Verify Medicaid CIN for Eleanor Vance', dueDate: new Date(Date.now() - 86400000).toISOString(), status: 'OPEN', leadId: 'lead-101', priority: 'HIGH' },
-    { id: 'task-2', title: 'Follow up on intake call for Marcus Brody', dueDate: new Date().toISOString(), status: 'OPEN', leadId: 'lead-102', priority: 'URGENT' }
+    {
+      id: 'task-1',
+      title: 'Verify Medicaid CIN for Eleanor Vance',
+      dueAt: new Date(Date.now() - 86400000).toISOString(),
+      dueDate: new Date(Date.now() - 86400000).toISOString(),
+      status: 'OPEN',
+      priority: 'HIGH',
+      assignedTo: { firstName: 'Zevi', lastName: 'Spiegel' },
+      lead: { id: 'lead-101', firstName: 'Eleanor', lastName: 'Vance' }
+    },
+    {
+      id: 'task-2',
+      title: 'Follow up on intake call for Marcus Brody',
+      dueAt: new Date().toISOString(),
+      dueDate: new Date().toISOString(),
+      status: 'OPEN',
+      priority: 'URGENT',
+      assignedTo: { firstName: 'Sarah', lastName: 'Jenkins' },
+      lead: { id: 'lead-102', firstName: 'Marcus', lastName: 'Brody' }
+    }
   ],
   activity: [
     {
@@ -175,10 +217,10 @@ function handleMockFallback(path: string, options: RequestInit) {
     return {
       counts: {
         totalLeads: mockState.leads.length,
-        activePatients: mockState.leads.filter(l => l.status === 'ACTIVE').length,
-        newLeadsToday: mockState.leads.filter(l => l.stage === 'NEW').length,
+        activePatients: mockState.leads.filter(l => l.status === 'ACTIVE' || l.stage === 'ACTIVE_PATIENT').length,
+        newLeadsToday: mockState.leads.filter(l => l.stage === 'NEW' || l.status === 'NEW').length,
         openTasks: mockState.tasks.filter(t => t.status === 'OPEN').length,
-        overdueTasks: mockState.tasks.filter(t => t.status === 'OPEN' && new Date(t.dueDate) < new Date()).length,
+        overdueTasks: mockState.tasks.filter(t => t.status === 'OPEN' && t.dueAt && new Date(t.dueAt) < new Date()).length,
         activeProcesses: 2
       },
       kpis: {
@@ -188,28 +230,30 @@ function handleMockFallback(path: string, options: RequestInit) {
         conversionRate: 33.3
       },
       leadsByStatus: {
-        NEW: mockState.leads.filter(l => l.stage === 'NEW').length,
-        ATTEMPTING_CONTACT: 0,
-        CONTACTED: mockState.leads.filter(l => l.stage === 'CONTACTED').length,
-        QUALIFIED: mockState.leads.filter(l => l.stage === 'QUALIFIED').length,
-        ACTIVE_PATIENT: mockState.leads.filter(l => l.status === 'ACTIVE').length,
-        ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD').length
+        NEW: mockState.leads.filter(l => l.stage === 'NEW' || l.status === 'NEW').length,
+        ATTEMPTING_CONTACT: mockState.leads.filter(l => l.stage === 'ATTEMPTING_CONTACT' || l.status === 'ATTEMPTING_CONTACT').length,
+        CONTACTED: mockState.leads.filter(l => l.stage === 'CONTACTED' || l.status === 'CONTACTED').length,
+        QUALIFIED: mockState.leads.filter(l => l.stage === 'QUALIFIED' || l.status === 'QUALIFIED').length,
+        ACTIVE_PATIENT: mockState.leads.filter(l => l.stage === 'ACTIVE_PATIENT' || l.status === 'ACTIVE_PATIENT' || l.status === 'ACTIVE').length,
+        ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD').length,
+        DISCHARGED: mockState.leads.filter(l => l.status === 'DISCHARGED').length,
+        UNQUALIFIED: mockState.leads.filter(l => l.status === 'UNQUALIFIED').length
       }
     };
   }
   if (path.includes('/api/dashboard/recent-activity')) {
     return mockState.activity;
   }
-  if (path.includes('/api/dashboard/pipeline')) {
+  if (path.includes('/api/dashboard/pipeline') || path.includes('/api/pipeline') || path.includes('/api/processes/pipeline')) {
     return {
-      stages: [
-        { name: 'NEW', count: 1 },
-        { name: 'ATTEMPTING_CONTACT', count: 0 },
-        { name: 'CONTACTED', count: 1 },
-        { name: 'QUALIFIED', count: 1 },
-        { name: 'SCHEDULED', count: 0 },
-        { name: 'CLOSED_WON', count: 0 }
-      ]
+      NEW: mockState.leads.filter(l => l.stage === 'NEW' || l.status === 'NEW'),
+      ATTEMPTING_CONTACT: mockState.leads.filter(l => l.stage === 'ATTEMPTING_CONTACT' || l.status === 'ATTEMPTING_CONTACT'),
+      CONTACTED: mockState.leads.filter(l => l.stage === 'CONTACTED' || l.status === 'CONTACTED'),
+      QUALIFIED: mockState.leads.filter(l => l.stage === 'QUALIFIED' || l.status === 'QUALIFIED'),
+      ACTIVE_PATIENT: mockState.leads.filter(l => l.stage === 'ACTIVE_PATIENT' || l.status === 'ACTIVE_PATIENT' || l.status === 'ACTIVE'),
+      ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD'),
+      DISCHARGED: mockState.leads.filter(l => l.status === 'DISCHARGED'),
+      UNQUALIFIED: mockState.leads.filter(l => l.status === 'UNQUALIFIED')
     };
   }
   if (path.includes('/api/leads')) {
@@ -241,16 +285,22 @@ function handleMockFallback(path: string, options: RequestInit) {
     }
     if (method === 'POST') {
       const body = JSON.parse((options.body as string) || '{}');
-      const nameParts = (body.name || 'New Intake').split(' ');
+      const nameParts = (body.name || `${body.firstName || 'New'} ${body.lastName || 'Intake'}`).split(' ');
       const newLead: LeadItem = {
         id: `lead-${Date.now()}`,
-        firstName: nameParts[0] || 'New',
-        lastName: nameParts.slice(1).join(' ') || 'Intake',
-        name: body.name || 'New Intake',
+        firstName: body.firstName || nameParts[0] || 'New',
+        lastName: body.lastName || nameParts.slice(1).join(' ') || 'Intake',
+        name: body.name || `${body.firstName || 'New'} ${body.lastName || 'Intake'}`,
         phone: body.phone || '555-000-0000',
         email: body.email || 'intake@example.com',
-        stage: body.stage || 'NEW',
-        status: body.status || 'ACTIVE',
+        stage: body.stage || body.status || 'NEW',
+        status: body.status || body.stage || 'NEW',
+        source: body.source || 'PHONE_INQUIRY',
+        serviceType: body.serviceType || 'HHA/PCA',
+        county: body.county || 'KINGS',
+        payerType: body.payerType || 'MEDICAID',
+        totalCallAttempts: 0,
+        owner: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
         blockerType: body.blockerType || null,
         blockerNotes: body.blockerNotes || null,
         riskLevel: 'Normal',
@@ -278,7 +328,7 @@ function handleMockFallback(path: string, options: RequestInit) {
     return { tasks: mockState.tasks };
   }
   if (path.includes('/api/users')) {
-    return { users: [mockState.user] };
+    return [mockState.user];
   }
   if (path.includes('/api/performance')) {
     return { conversionRate: '33%', avgIntakeHours: 4.2 };
@@ -357,7 +407,7 @@ export const api = {
   updateTask: (token: string, id: string, data: any) =>
     apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }),
   deleteTask: (token: string, id: string) =>
-    apiFetch(`/api/tasks/${id}`, { method: 'DELETE', token }),
+    apiFetch(`/api/tasks/${id}`, { token }),
 
   // Users
   getUsers: (token: string) =>
