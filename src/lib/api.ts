@@ -34,7 +34,89 @@ export interface LeadItem {
   isCheckbackOverdue: boolean;
 }
 
-// In-memory persistent state for demo/standalone operations
+// Default initial leads list
+const defaultLeads: LeadItem[] = [
+  {
+    id: 'lead-101',
+    firstName: 'Eleanor',
+    lastName: 'Vance',
+    name: 'Eleanor Vance',
+    phone: '555-019-2831',
+    email: 'eleanor.vance@example.com',
+    stage: 'QUALIFIED',
+    status: 'ON_HOLD',
+    source: 'HOSPITAL',
+    serviceType: 'HHA/PCA',
+    county: 'KINGS',
+    payerType: 'MEDICAID',
+    totalCallAttempts: 2,
+    owner: { firstName: 'Zevi', lastName: 'Spiegel' },
+    blockerType: 'MISSING_DOCS',
+    blockerNotes: 'Waiting on physician signatures for Form 485',
+    riskLevel: 'High',
+    riskScore: 65,
+    assignedTo: 'Zevi Spiegel',
+    createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(),
+    isCheckbackTooFar: true,
+    isCheckbackOverdue: false
+  },
+  {
+    id: 'lead-102',
+    firstName: 'Marcus',
+    lastName: 'Brody',
+    name: 'Marcus Brody',
+    phone: '555-014-9923',
+    email: 'marcus.brody@example.com',
+    stage: 'NEW',
+    status: 'NEW',
+    source: 'REFERRAL',
+    serviceType: 'NHTD',
+    county: 'BRONX',
+    payerType: 'MEDICAID',
+    totalCallAttempts: 4,
+    owner: { firstName: 'Sarah', lastName: 'Jenkins' },
+    blockerType: null,
+    blockerNotes: null,
+    riskLevel: 'Critical',
+    riskScore: 85,
+    assignedTo: 'Sarah Jenkins',
+    createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 8 * 86400000).toISOString(),
+    checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(),
+    isCheckbackTooFar: false,
+    isCheckbackOverdue: true
+  },
+  {
+    id: 'lead-103',
+    firstName: 'Sophia',
+    lastName: 'Martinez',
+    name: 'Sophia Martinez',
+    phone: '555-017-3341',
+    email: 'sophia.m@example.com',
+    stage: 'CONTACTED',
+    status: 'CONTACTED',
+    source: 'PHONE_INQUIRY',
+    serviceType: 'CDPAP',
+    county: 'QUEENS',
+    payerType: 'MLTC',
+    totalCallAttempts: 1,
+    owner: { firstName: 'Zevi', lastName: 'Spiegel' },
+    blockerType: null,
+    blockerNotes: null,
+    riskLevel: 'Normal',
+    riskScore: 20,
+    assignedTo: 'Zevi Spiegel',
+    createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+    checkbackDate: new Date(Date.now() + 3 * 86400000).toISOString(),
+    isCheckbackTooFar: false,
+    isCheckbackOverdue: false
+  }
+];
+
+// Persistent state for demo/standalone operations
 const mockState: {
   user: { id: string; firstName: string; lastName: string; name: string; email: string; role: string };
   token: string;
@@ -54,86 +136,7 @@ const mockState: {
       inactivityPenalty: 20
     }
   },
-  leads: [
-    {
-      id: 'lead-101',
-      firstName: 'Eleanor',
-      lastName: 'Vance',
-      name: 'Eleanor Vance',
-      phone: '555-019-2831',
-      email: 'eleanor.vance@example.com',
-      stage: 'QUALIFIED',
-      status: 'ON_HOLD',
-      source: 'HOSPITAL',
-      serviceType: 'HHA/PCA',
-      county: 'KINGS',
-      payerType: 'MEDICAID',
-      totalCallAttempts: 2,
-      owner: { firstName: 'Zevi', lastName: 'Spiegel' },
-      blockerType: 'MISSING_DOCS',
-      blockerNotes: 'Waiting on physician signatures for Form 485',
-      riskLevel: 'High',
-      riskScore: 65,
-      assignedTo: 'Zevi Spiegel',
-      createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-      checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(),
-      isCheckbackTooFar: true,
-      isCheckbackOverdue: false
-    },
-    {
-      id: 'lead-102',
-      firstName: 'Marcus',
-      lastName: 'Brody',
-      name: 'Marcus Brody',
-      phone: '555-014-9923',
-      email: 'marcus.brody@example.com',
-      stage: 'NEW',
-      status: 'NEW',
-      source: 'REFERRAL',
-      serviceType: 'NHTD',
-      county: 'BRONX',
-      payerType: 'MEDICAID',
-      totalCallAttempts: 4,
-      owner: { firstName: 'Sarah', lastName: 'Jenkins' },
-      blockerType: null,
-      blockerNotes: null,
-      riskLevel: 'Critical',
-      riskScore: 85,
-      assignedTo: 'Sarah Jenkins',
-      createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 8 * 86400000).toISOString(),
-      checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(),
-      isCheckbackTooFar: false,
-      isCheckbackOverdue: true
-    },
-    {
-      id: 'lead-103',
-      firstName: 'Sophia',
-      lastName: 'Martinez',
-      name: 'Sophia Martinez',
-      phone: '555-017-3341',
-      email: 'sophia.m@example.com',
-      stage: 'CONTACTED',
-      status: 'CONTACTED',
-      source: 'PHONE_INQUIRY',
-      serviceType: 'CDPAP',
-      county: 'QUEENS',
-      payerType: 'MLTC',
-      totalCallAttempts: 1,
-      owner: { firstName: 'Zevi', lastName: 'Spiegel' },
-      blockerType: null,
-      blockerNotes: null,
-      riskLevel: 'Normal',
-      riskScore: 20,
-      assignedTo: 'Zevi Spiegel',
-      createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-      updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-      checkbackDate: new Date(Date.now() + 3 * 86400000).toISOString(),
-      isCheckbackTooFar: false,
-      isCheckbackOverdue: false
-    }
-  ],
+  leads: defaultLeads,
   tasks: [
     {
       id: 'task-1',
@@ -175,6 +178,27 @@ const mockState: {
     }
   ]
 };
+
+// Initialize persistent local storage for leads
+if (typeof window !== 'undefined') {
+  try {
+    const savedLeads = localStorage.getItem('intake_crm_leads');
+    if (savedLeads) {
+      const parsed = JSON.parse(savedLeads);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        mockState.leads = parsed;
+      }
+    }
+  } catch {}
+}
+
+function saveLeadsToStorage() {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('intake_crm_leads', JSON.stringify(mockState.leads));
+    } catch {}
+  }
+}
 
 async function apiFetch(path: string, options: FetchOptions = {}) {
   const { token, ...fetchOpts } = options;
@@ -253,7 +277,7 @@ function handleMockFallback(path: string, options: RequestInit) {
       ACTIVE_PATIENT: mockState.leads.filter(l => l.stage === 'ACTIVE_PATIENT' || l.status === 'ACTIVE_PATIENT' || l.status === 'ACTIVE'),
       ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD'),
       DISCHARGED: mockState.leads.filter(l => l.status === 'DISCHARGED'),
-      UNQUALIFIED: mockState.leads.filter(l => l.status === 'UNQUALIFIED')
+      UNQUALIFIED: mockState.leads.filter(l => l.stage === 'UNQUALIFIED' || l.status === 'UNQUALIFIED')
     };
   }
   if (path.includes('/api/leads')) {
@@ -265,6 +289,7 @@ function handleMockFallback(path: string, options: RequestInit) {
       const idx = mockState.leads.findIndex(l => l.id === lastPart);
       if (idx !== -1) {
         mockState.leads[idx] = { ...mockState.leads[idx], ...body, updatedAt: new Date().toISOString() };
+        saveLeadsToStorage();
         return mockState.leads[idx];
       }
     }
@@ -313,6 +338,7 @@ function handleMockFallback(path: string, options: RequestInit) {
         isCheckbackOverdue: false
       };
       mockState.leads.unshift(newLead);
+      saveLeadsToStorage();
       return newLead;
     }
     if (method === 'GET' && lastPart && lastPart !== 'leads' && !lastPart.includes('?')) {
@@ -363,17 +389,101 @@ export const api = {
   getRecentActivity: (token: string) =>
     apiFetch('/api/dashboard/recent-activity', { token }),
 
-  // Leads (unified lifecycle)
-  getLeads: (token: string, params?: Record<string, string>) => {
+  // Unified Leads lifecycle with robust normalization
+  getLeads: async (token: string, params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return apiFetch(`/api/leads${qs}`, { token });
+    const res = await apiFetch(`/api/leads${qs}`, { token });
+    
+    let leadsList: any[] = [];
+    if (Array.isArray(res)) {
+      leadsList = res;
+    } else if (res && Array.isArray(res.leads)) {
+      leadsList = res.leads;
+    }
+
+    // Merge mockState leads to ensure newly created local leads and defaults are always available
+    const existingIds = new Set(leadsList.map(l => l.id));
+    for (const mockLead of mockState.leads) {
+      if (!existingIds.has(mockLead.id)) {
+        leadsList.unshift(mockLead);
+        existingIds.add(mockLead.id);
+      }
+    }
+
+    // Filter by status if requested
+    if (params?.status) {
+      leadsList = leadsList.filter((l: any) => l.status === params.status || l.stage === params.status);
+    }
+
+    // Filter by search query if requested
+    if (params?.search) {
+      const q = params.search.toLowerCase();
+      leadsList = leadsList.filter((l: any) => 
+        (l.firstName && l.firstName.toLowerCase().includes(q)) ||
+        (l.lastName && l.lastName.toLowerCase().includes(q)) ||
+        (l.name && l.name.toLowerCase().includes(q)) ||
+        (l.email && l.email.toLowerCase().includes(q)) ||
+        (l.phone && l.phone.includes(q))
+      );
+    }
+
+    return { leads: leadsList, total: leadsList.length };
   },
-  getLead: (token: string, id: string) =>
-    apiFetch(`/api/leads/${id}`, { token }),
-  createLead: (token: string, data: any) =>
-    apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(data), token }),
-  updateLead: (token: string, id: string, data: any) =>
-    apiFetch(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }),
+  getLead: async (token: string, id: string) => {
+    const res = await apiFetch(`/api/leads/${id}`, { token });
+    if (res && res.id) return res;
+    const found = mockState.leads.find(l => l.id === id);
+    if (found) return found;
+    return null;
+  },
+  createLead: async (token: string, data: any) => {
+    const res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(data), token });
+    const nameParts = (data.name || `${data.firstName || 'New'} ${data.lastName || 'Intake'}`).split(' ');
+    const newLead: LeadItem = {
+      id: res?.id || `lead-${Date.now()}`,
+      firstName: data.firstName || nameParts[0] || 'New',
+      lastName: data.lastName || nameParts.slice(1).join(' ') || 'Intake',
+      name: data.name || `${data.firstName || 'New'} ${data.lastName || 'Intake'}`,
+      phone: data.phone || '555-000-0000',
+      email: data.email || 'intake@example.com',
+      stage: data.stage || data.status || 'NEW',
+      status: data.status || data.stage || 'NEW',
+      source: data.source || 'PHONE_INQUIRY',
+      serviceType: data.serviceType || 'HHA/PCA',
+      county: data.county || 'KINGS',
+      payerType: data.payerType || 'MEDICAID',
+      totalCallAttempts: 0,
+      owner: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+      blockerType: data.blockerType || null,
+      blockerNotes: data.blockerNotes || null,
+      riskLevel: 'Normal',
+      riskScore: 10,
+      assignedTo: mockState.user.name,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      checkbackDate: null,
+      isCheckbackTooFar: false,
+      isCheckbackOverdue: false
+    };
+
+    const existingIdx = mockState.leads.findIndex(l => l.id === newLead.id);
+    if (existingIdx !== -1) {
+      mockState.leads[existingIdx] = newLead;
+    } else {
+      mockState.leads.unshift(newLead);
+    }
+    saveLeadsToStorage();
+    return newLead;
+  },
+  updateLead: async (token: string, id: string, data: any) => {
+    const res = await apiFetch(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data), token });
+    const idx = mockState.leads.findIndex(l => l.id === id);
+    if (idx !== -1) {
+      mockState.leads[idx] = { ...mockState.leads[idx], ...data, updatedAt: new Date().toISOString() };
+      saveLeadsToStorage();
+    }
+    return res || mockState.leads[idx];
+  },
   addLeadActivity: (token: string, id: string, data: any) =>
     apiFetch(`/api/leads/${id}/activity`, { method: 'POST', body: JSON.stringify(data), token }),
 

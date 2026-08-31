@@ -30,9 +30,47 @@ export default function Home() {
   const [view, setView] = useState<string>('dashboard');
   const [viewFilter, setViewFilter] = useState<string>('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
+
+  // Restore authentication & page navigation state from localStorage & URL Hash on mount
+  useEffect(() => {
+    try {
+      const savedToken = localStorage.getItem('intake_crm_token');
+      const savedUser = localStorage.getItem('intake_crm_user');
+      const savedView = localStorage.getItem('intake_crm_view');
+      const savedLeadId = localStorage.getItem('intake_crm_lead_id');
+
+      if (savedToken && savedUser) {
+        setToken(savedToken);
+        setUser(JSON.parse(savedUser));
+
+        // Restore view from URL hash or localStorage
+        const hash = window.location.hash.replace('#', '');
+        if (hash.startsWith('lead/')) {
+          const leadId = hash.split('/')[1] || savedLeadId;
+          if (leadId) {
+            setSelectedLeadId(leadId);
+            setView('lead-detail');
+          } else {
+            setView('leads');
+          }
+        } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(hash)) {
+          setView(hash);
+        } else if (savedView) {
+          setView(savedView);
+          if (savedView === 'lead-detail' && savedLeadId) {
+            setSelectedLeadId(savedLeadId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Session Restore Error]', err);
+    } finally {
+      setInitialized(true);
+    }
+  }, []);
 
   const handleLogin = (u: User, t: string) => {
-    // Normalize user object properties safely
     const firstName = u.firstName || (u.name ? u.name.split(' ')[0] : 'Admin');
     const lastName = u.lastName || (u.name ? u.name.split(' ')[1] || 'User' : 'User');
     const normalizedUser = {
@@ -43,6 +81,11 @@ export default function Home() {
     };
     setUser(normalizedUser);
     setToken(t);
+
+    try {
+      localStorage.setItem('intake_crm_token', t);
+      localStorage.setItem('intake_crm_user', JSON.stringify(normalizedUser));
+    } catch {}
   };
 
   const handleLogout = async () => {
@@ -51,11 +94,25 @@ export default function Home() {
     setToken('');
     setView('dashboard');
     setViewFilter('');
+    setSelectedLeadId(null);
+
+    try {
+      localStorage.removeItem('intake_crm_token');
+      localStorage.removeItem('intake_crm_user');
+      localStorage.removeItem('intake_crm_view');
+      localStorage.removeItem('intake_crm_lead_id');
+      window.location.hash = '';
+    } catch {}
   };
 
   const handleSelectLead = (id: string) => {
     setSelectedLeadId(id);
     setView('lead-detail');
+    try {
+      localStorage.setItem('intake_crm_view', 'lead-detail');
+      localStorage.setItem('intake_crm_lead_id', id);
+      window.location.hash = `lead/${id}`;
+    } catch {}
   };
 
   const handleNavigate = (targetView: string, targetFilter: string = '') => {
@@ -63,9 +120,15 @@ export default function Home() {
     setView(targetView);
     if (targetView !== 'lead-detail') {
       setSelectedLeadId(null);
+      try {
+        localStorage.setItem('intake_crm_view', targetView);
+        localStorage.removeItem('intake_crm_lead_id');
+        window.location.hash = targetView;
+      } catch {}
     }
   };
 
+  if (!initialized) return null;
   if (!user) return <LoginScreen onLogin={handleLogin} />;
 
   const firstName = user.firstName || (user.name ? user.name.split(' ')[0] : 'A');
@@ -121,7 +184,7 @@ export default function Home() {
         {view === 'pipeline' && <Pipeline token={token} onSelectLead={handleSelectLead} />}
         {view === 'leads' && <LeadList token={token} initialFilter={viewFilter} onSelectLead={handleSelectLead} />}
         {view === 'lead-detail' && selectedLeadId && (
-          <LeadDetail token={token} leadId={selectedLeadId} onBack={() => setView('leads')} user={user} />
+          <LeadDetail token={token} leadId={selectedLeadId} onBack={() => handleNavigate('leads')} user={user} />
         )}
         {view === 'tasks' && <Tasks token={token} userId={user.id} onSelectLead={handleSelectLead} />}
         {view === 'performance' && <PerformanceReview token={token} onSelectLead={handleSelectLead} />}
