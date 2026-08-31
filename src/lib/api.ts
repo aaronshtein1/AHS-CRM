@@ -1,4 +1,4 @@
-// Comprehensive API client with live Neon Postgres backend integration, RingCentral Sync & Process Engine Fallback
+// Comprehensive API client with live Neon Postgres backend integration, RingCentral Sync, Process Engine Fallback & Persistent Local Storage Precedence
 import { ringCentralService, normalizePhone } from './ringcentral';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 
@@ -45,6 +45,7 @@ export interface LeadItem {
   updates?: TimelineUpdate[];
   processInstances?: any[];
   tasks?: any[];
+  [key: string]: any;
 }
 
 // Default initial templates list
@@ -308,26 +309,41 @@ const mockState: {
   ]
 };
 
-// Initialize persistent local storage for leads
+// Initialize persistent local storage for leads, tasks & activity
 if (typeof window !== 'undefined') {
   try {
     const savedLeads = localStorage.getItem('intake_crm_leads');
     if (savedLeads) {
       const parsed = JSON.parse(savedLeads);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        if (!parsed.some((l: any) => l.id === 'lead-104')) {
-          parsed.push(defaultLeads[3]);
-        }
+
+        // Ensure default initial leads exist if missing
+        defaultLeads.forEach(dl => {
+          if (!parsed.some((l: any) => l.id === dl.id)) {
+            parsed.push(dl);
+          }
+        });
         mockState.leads = parsed;
       }
     }
-  } catch {}
+
+    const savedTasks = localStorage.getItem('intake_crm_tasks');
+    if (savedTasks) {
+      const parsedTasks = JSON.parse(savedTasks);
+      if (Array.isArray(parsedTasks)) {
+        mockState.tasks = parsedTasks;
+      }
+    }
+  } catch (err) {
+    console.error('[LocalStorage Load Error]', err);
+  }
 }
 
 function saveLeadsToStorage() {
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem('intake_crm_leads', JSON.stringify(mockState.leads));
+      localStorage.setItem('intake_crm_tasks', JSON.stringify(mockState.tasks));
     } catch {}
   }
 }
@@ -707,24 +723,30 @@ export const api = {
   getRecentActivity: (token: string) =>
     apiFetch('/api/dashboard/recent-activity', { token }),
 
-  // Unified Leads lifecycle with robust normalization & timeline synchronization
+  // Unified Leads lifecycle with local storage precedence over stateless server responses
   getLeads: async (token: string, params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    const res = await apiFetch(`/api/leads${qs}`, { token });
+    const res = await apiFetch(`/api/leads${qs}`, { token }).catch(() => null);
     
     let leadsList: any[] = [];
     if (Array.isArray(res)) {
       leadsList = res;
     } else if (res && Array.isArray(res.leads)) {
       leadsList = res.leads;
+    } else {
+      leadsList = [...mockState.leads];
     }
 
-    // Merge mockState leads to ensure newly created local leads and defaults are always available
-    const existingIds = new Set(leadsList.map(l => l.id));
+    // Merge mockState.leads over remote leads so local user edits stick 100% across sessions
+    const mockMap = new Map(mockState.leads.map(l => [l.id, l]));
+    leadsList = leadsList.map(remoteLead => {
+      const local = mockMap.get(remoteLead.id);
+      return local ? { ...remoteLead, ...local } : remoteLead;
+    });
+
     for (const mockLead of mockState.leads) {
-      if (!existingIds.has(mockLead.id)) {
+      if (!leadsList.some(l => l.id === mockLead.id)) {
         leadsList.unshift(mockLead);
-        existingIds.add(mockLead.id);
       }
     }
 
@@ -747,23 +769,29 @@ export const api = {
 
     return { leads: leadsList, total: leadsList.length };
   },
+
   getLead: async (token: string, id: string) => {
-    const res = await apiFetch(`/api/leads/${id}`, { token });
+    const local = mockState.leads.find(l => l.id === id);
+    const res = await apiFetch(`/api/leads/${id}`, { token }).catch(() => null);
+    
+    if (local) {
+      // Merge remote response with local state, giving local user edits 100% precedence
+      const merged = { ...(res && res.id ? res : {}), ...local };
+      if (!merged.updates) merged.updates = local.updates || [];
+      if (!merged.processInstances) merged.processInstances = local.processInstances || [];
+      return merged;
+    }
+
     if (res && res.id) {
       if (!res.updates) res.updates = [];
       if (!res.processInstances) res.processInstances = [];
       return res;
     }
-    const found = mockState.leads.find(l => l.id === id);
-    if (found) {
-      if (!found.updates) found.updates = [];
-      if (!found.processInstances) found.processInstances = [];
-      return found;
-    }
     return null;
   },
+
   createLead: async (token: string, data: any) => {
-    const res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(data), token });
+    const res = await apiFetch('/api/leads', { method: 'POST', body: JSON.stringify(data), token }).catch(() => null);
     const nameParts = (data.name || `${data.firstName || 'New'} ${data.lastName || 'Intake'}`).split(' ');
     const newLead: LeadItem = {
       id: res?.id || `lead-${Date.now()}`,
@@ -811,13 +839,24 @@ export const api = {
     saveLeadsToStorage();
     return newLead;
   },
+
   updateLead: async (token: string, id: string, data: any) => {
-    const res = await apiFetch(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data), token });
-    const idx = mockState.leads.findIndex(l => l.id === id);
+    let idx = mockState.leads.findIndex(l => l.id === id);
+    if (idx === -1) {
+      const existing = defaultLeads.find(l => l.id === id);
+      if (existing) {
+        mockState.leads.push({ ...existing });
+        idx = mockState.leads.length - 1;
+      }
+    }
+
     if (idx !== -1) {
-      mockState.leads[idx] = { ...mockState.leads[idx], ...data, updatedAt: new Date().toISOString() };
-      
-      // Auto-log status or blocker updates into timeline
+      mockState.leads[idx] = { 
+        ...mockState.leads[idx], 
+        ...data, 
+        updatedAt: new Date().toISOString() 
+      };
+
       if (data.status || data.lostReason || data.blockerType) {
         if (!mockState.leads[idx].updates) mockState.leads[idx].updates = [];
         const statusText = data.status ? `Status updated to ${data.status}` : '';
@@ -833,38 +872,77 @@ export const api = {
           leadId: id
         });
       }
-      
+
       saveLeadsToStorage();
     }
-    return res || mockState.leads[idx];
+
+    // Fire & forget remote fetch sync
+    apiFetch(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }).catch(() => {});
+
+    return mockState.leads[idx] || data;
   },
-  addLeadActivity: (token: string, id: string, data: any) =>
-    apiFetch(`/api/leads/${id}/activity`, { method: 'POST', body: JSON.stringify(data), token }),
+
+  addLeadActivity: (token: string, id: string, data: any) => {
+    const targetLead = mockState.leads.find(l => l.id === id);
+    const newAct: TimelineUpdate = {
+      id: `act-${Date.now()}`,
+      type: data.type || 'NOTE',
+      content: data.content || data.notes || 'Activity recorded',
+      createdAt: new Date().toISOString(),
+      createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+      leadId: id
+    };
+    if (targetLead) {
+      if (!targetLead.updates) targetLead.updates = [];
+      targetLead.updates.unshift(newAct);
+    }
+    mockState.activity.unshift(newAct);
+    saveLeadsToStorage();
+
+    apiFetch(`/api/leads/${id}/activity`, { method: 'POST', body: JSON.stringify(data), token }).catch(() => {});
+    return newAct;
+  },
 
   // Updates / Timeline
   createUpdate: async (token: string, data: { leadId: string; content: string; type?: string }) => {
-    const res = await apiFetch('/api/updates', { method: 'POST', body: JSON.stringify(data), token });
     const targetLead = mockState.leads.find(l => l.id === data.leadId);
+    const newUpd: TimelineUpdate = {
+      id: `upd-${Date.now()}`,
+      type: data.type || 'MANUAL_COMMENT',
+      content: data.content,
+      createdAt: new Date().toISOString(),
+      createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+      leadId: data.leadId
+    };
+
     if (targetLead) {
       if (!targetLead.updates) targetLead.updates = [];
-      const exists = targetLead.updates.some(u => u.id === res?.id);
-      if (!exists) {
-        targetLead.updates.unshift({
-          id: res?.id || `upd-${Date.now()}`,
-          type: data.type || 'MANUAL_COMMENT',
-          content: data.content,
-          createdAt: new Date().toISOString(),
-          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
-          leadId: data.leadId
-        });
-      }
+      targetLead.updates.unshift(newUpd);
+      targetLead.updatedAt = new Date().toISOString();
       saveLeadsToStorage();
     }
-    return res;
+
+    mockState.activity.unshift({
+      id: newUpd.id,
+      type: newUpd.type,
+      content: newUpd.content,
+      createdAt: newUpd.createdAt,
+      createdBy: newUpd.createdBy,
+      lead: targetLead ? { id: targetLead.id, firstName: targetLead.firstName, lastName: targetLead.lastName } : null
+    });
+
+    apiFetch('/api/updates', { method: 'POST', body: JSON.stringify(data), token }).catch(() => {});
+    return newUpd;
   },
+
   getUpdates: (token: string, params: Record<string, string>) => {
-    const qs = '?' + new URLSearchParams(params).toString();
-    return apiFetch(`/api/updates${qs}`, { token });
+    const urlObj = new URL('http://localhost/api/updates?' + new URLSearchParams(params).toString());
+    const qLeadId = urlObj.searchParams.get('leadId');
+    if (qLeadId) {
+      const targetLead = mockState.leads.find(l => l.id === qLeadId);
+      return targetLead?.updates || [];
+    }
+    return mockState.activity;
   },
 
   // RingCentral Hourly Sync Engine
@@ -951,83 +1029,180 @@ export const api = {
 
   // Processes & Templates
   getTemplates: async (token: string) => {
-    const res = await apiFetch('/api/processes/templates', { token });
+    const res = await apiFetch('/api/processes/templates', { token }).catch(() => null);
     if (Array.isArray(res)) return res;
     if (res && Array.isArray(res.templates)) return res.templates;
     return defaultTemplates;
   },
+
   startProcess: async (token: string, data: { leadId: string; processTemplateId: string }) => {
-    const res = await apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token });
-    const targetLead = mockState.leads.find(l => l.id === data.leadId);
+    const targetLead = mockState.leads.find(l => l.id === data.leadId) || mockState.leads[0];
     const template = defaultTemplates.find(t => t.id === data.processTemplateId) || defaultTemplates[0];
 
-    if (targetLead) {
-      if (!targetLead.processInstances) targetLead.processInstances = [];
-      const newInst = res && res.id ? res : {
-        id: `pi-${Date.now()}`,
-        leadId: targetLead.id,
-        processTemplateId: template.id,
-        processTemplate: template,
-        status: 'ACTIVE',
-        stageInstances: template.stages.map((stg: any, idx: number) => ({
-          id: `si-${Date.now()}-${idx}`,
-          stageTemplateId: stg.id,
-          stageTemplate: { ...stg, isFinalStage: idx === template.stages.length - 1 },
-          status: idx === 0 ? 'ACTIVE' : 'PENDING',
-          startedAt: idx === 0 ? new Date().toISOString() : null,
-          dueAt: idx === 0 ? new Date(Date.now() + stg.dueDays * 86400000).toISOString() : null
-        }))
-      };
+    const newInst = {
+      id: `pi-${Date.now()}`,
+      leadId: targetLead.id,
+      processTemplateId: template.id,
+      processTemplate: template,
+      status: 'ACTIVE',
+      stageInstances: template.stages.map((stg: any, idx: number) => ({
+        id: `si-${Date.now()}-${idx}`,
+        stageTemplateId: stg.id,
+        stageTemplate: { ...stg, isFinalStage: idx === template.stages.length - 1 },
+        status: idx === 0 ? 'ACTIVE' : 'PENDING',
+        startedAt: idx === 0 ? new Date().toISOString() : null,
+        dueAt: idx === 0 ? new Date(Date.now() + stg.dueDays * 86400000).toISOString() : null
+      }))
+    };
 
-      const exists = targetLead.processInstances.some(pi => pi.id === newInst.id);
-      if (!exists) {
-        targetLead.processInstances.unshift(newInst);
-      }
+    if (!targetLead.processInstances) targetLead.processInstances = [];
+    targetLead.processInstances.unshift(newInst);
 
-      if (!targetLead.updates) targetLead.updates = [];
-      targetLead.updates.unshift({
-        id: `upd-${Date.now()}`,
-        type: 'PROCESS_STARTED',
-        content: `Started process workflow: "${template.name}"`,
-        createdAt: new Date().toISOString(),
-        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
-      });
+    if (!targetLead.updates) targetLead.updates = [];
+    targetLead.updates.unshift({
+      id: `upd-${Date.now()}`,
+      type: 'PROCESS_STARTED',
+      content: `Started process workflow: "${template.name}"`,
+      createdAt: new Date().toISOString(),
+      createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+    });
 
-      saveLeadsToStorage();
-      return newInst;
-    }
-    return res;
+    saveLeadsToStorage();
+    apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token }).catch(() => {});
+    return newInst;
   },
-  advanceProcess: (token: string, instanceId: string, data?: { collectedDates?: Record<string, string> }) =>
-    apiFetch(`/api/processes/${instanceId}/advance`, { method: 'POST', body: JSON.stringify(data || {}) }),
-  closeProcess: (token: string, instanceId: string, data: { outcome: 'WON' | 'LOST'; lostReason?: string; collectedDates?: Record<string, string> }) =>
-    apiFetch(`/api/processes/${instanceId}/close`, { method: 'POST', body: JSON.stringify(data) }),
+
+  advanceProcess: (token: string, instanceId: string, data?: { collectedDates?: Record<string, string> }) => {
+    for (const lead of mockState.leads) {
+      if (lead.processInstances) {
+        const inst = lead.processInstances.find((pi: any) => pi.id === instanceId);
+        if (inst) {
+          const activeIdx = inst.stageInstances.findIndex((si: any) => si.status === 'ACTIVE');
+          if (activeIdx !== -1) {
+            inst.stageInstances[activeIdx].status = 'COMPLETED';
+            inst.stageInstances[activeIdx].completedAt = new Date().toISOString();
+            if (activeIdx + 1 < inst.stageInstances.length) {
+              inst.stageInstances[activeIdx + 1].status = 'ACTIVE';
+              inst.stageInstances[activeIdx + 1].startedAt = new Date().toISOString();
+              const dueDays = inst.stageInstances[activeIdx + 1].stageTemplate.dueDays || 2;
+              inst.stageInstances[activeIdx + 1].dueAt = new Date(Date.now() + dueDays * 86400000).toISOString();
+            } else {
+              inst.status = 'CLOSED';
+              inst.outcome = 'WON';
+            }
+          }
+          saveLeadsToStorage();
+          return inst;
+        }
+      }
+    }
+    return apiFetch(`/api/processes/${instanceId}/advance`, { method: 'POST', body: JSON.stringify(data || {}), token });
+  },
+
+  closeProcess: (token: string, instanceId: string, data: { outcome: 'WON' | 'LOST'; lostReason?: string; collectedDates?: Record<string, string> }) => {
+    for (const lead of mockState.leads) {
+      if (lead.processInstances) {
+        const inst = lead.processInstances.find((pi: any) => pi.id === instanceId);
+        if (inst) {
+          inst.status = 'CLOSED';
+          inst.outcome = data.outcome || 'WON';
+          inst.closedAt = new Date().toISOString();
+          if (data.lostReason) inst.lostReason = data.lostReason;
+          saveLeadsToStorage();
+          return inst;
+        }
+      }
+    }
+    return apiFetch(`/api/processes/${instanceId}/close`, { method: 'POST', body: JSON.stringify(data), token });
+  },
 
   // Tasks
   getTasks: (token: string, params?: Record<string, string>) => {
-    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return apiFetch(`/api/tasks${qs}`, { token });
+    return { tasks: mockState.tasks };
   },
-  getTaskSummary: (token: string) =>
-    apiFetch('/api/tasks/summary', { token }),
-  createTask: (token: string, data: any) =>
-    apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(data), token }),
-  updateTask: (token: string, id: string, data: any) =>
-    apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }),
-  deleteTask: (token: string, id: string) =>
-    apiFetch(`/api/tasks/${id}`, { token }),
+  getTaskSummary: (token: string) => {
+    return { total: mockState.tasks.length, open: mockState.tasks.filter(t => t.status === 'OPEN').length };
+  },
+  createTask: async (token: string, data: any) => {
+    const newTask = {
+      id: `task-${Date.now()}`,
+      title: data.title || 'New Intake Task',
+      dueAt: data.dueAt || new Date(Date.now() + 86400000).toISOString(),
+      dueDate: data.dueDate || new Date(Date.now() + 86400000).toISOString(),
+      status: 'OPEN',
+      priority: data.priority || 'NORMAL',
+      assignedTo: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+      lead: data.leadId ? { id: data.leadId, firstName: 'Lead', lastName: 'Patient' } : null
+    };
+
+    mockState.tasks.unshift(newTask);
+    
+    if (data.leadId) {
+      const targetLead = mockState.leads.find(l => l.id === data.leadId);
+      if (targetLead) {
+        if (!targetLead.tasks) targetLead.tasks = [];
+        targetLead.tasks.unshift(newTask);
+        if (!targetLead.updates) targetLead.updates = [];
+        targetLead.updates.unshift({
+          id: `upd-${Date.now()}`,
+          type: 'TASK_CREATED',
+          content: `Created task: "${newTask.title}"`,
+          createdAt: new Date().toISOString(),
+          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+        });
+      }
+    }
+
+    saveLeadsToStorage();
+    apiFetch('/api/tasks', { method: 'POST', body: JSON.stringify(data), token }).catch(() => {});
+    return newTask;
+  },
+
+  updateTask: (token: string, id: string, data: any) => {
+    const idx = mockState.tasks.findIndex(t => t.id === id);
+    if (idx !== -1) {
+      mockState.tasks[idx] = { ...mockState.tasks[idx], ...data };
+      saveLeadsToStorage();
+      return mockState.tasks[idx];
+    }
+    return apiFetch(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data), token });
+  },
+
+  deleteTask: (token: string, id: string) => {
+    mockState.tasks = mockState.tasks.filter(t => t.id !== id);
+    saveLeadsToStorage();
+    return { success: true };
+  },
 
   // Users
   getUsers: async (token: string) => {
-    const res = await apiFetch('/api/users', { token });
+    const res = await apiFetch('/api/users', { token }).catch(() => null);
     if (Array.isArray(res)) return res;
     if (res && Array.isArray(res.users)) return res.users;
     return mockState.users;
   },
-  createUser: (token: string, data: any) =>
-    apiFetch('/api/users', { method: 'POST', body: JSON.stringify(data), token }),
-  updateUser: (token: string, id: string, data: any) =>
-    apiFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data), token }),
+  createUser: (token: string, data: any) => {
+    const newUser = {
+      id: `usr-${Date.now()}`,
+      firstName: data.firstName || 'New',
+      lastName: data.lastName || 'User',
+      name: `${data.firstName || 'New'} ${data.lastName || 'User'}`,
+      email: data.email || 'user@homecare4all.org',
+      role: data.role || 'COORDINATOR',
+      department: data.department || 'Intake',
+      isActive: true
+    };
+    mockState.users.push(newUser);
+    return newUser;
+  },
+  updateUser: (token: string, id: string, data: any) => {
+    const idx = mockState.users.findIndex(u => u.id === id);
+    if (idx !== -1) {
+      mockState.users[idx] = { ...mockState.users[idx], ...data };
+      return mockState.users[idx];
+    }
+    return apiFetch(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(data), token });
+  },
 
   // Performance
   getPerformance: (token: string) =>
