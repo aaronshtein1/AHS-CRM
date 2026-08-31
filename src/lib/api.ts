@@ -7,8 +7,33 @@ interface FetchOptions extends RequestInit {
   token?: string;
 }
 
+export interface LeadItem {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  stage: string;
+  status: string;
+  blockerType: string | null;
+  blockerNotes: string | null;
+  riskLevel: string;
+  riskScore: number;
+  assignedTo: string;
+  createdAt: string;
+  updatedAt: string;
+  checkbackDate: string | null;
+  isCheckbackTooFar: boolean;
+  isCheckbackOverdue: boolean;
+}
+
 // In-memory persistent state for demo/standalone operations
-const mockState = {
+const mockState: {
+  user: { id: string; name: string; email: string; role: string };
+  token: string;
+  settings: Record<string, any>;
+  leads: LeadItem[];
+  tasks: any[];
+} = {
   user: { id: 'usr-1', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN' },
   token: 'mock-jwt-token-zevi-spiegel',
   settings: {
@@ -152,7 +177,7 @@ function handleMockFallback(path: string, options: RequestInit) {
     }
     if (method === 'POST') {
       const body = JSON.parse((options.body as string) || '{}');
-      const newLead = {
+      const newLead: LeadItem = {
         id: `lead-${Date.now()}`,
         name: body.name || 'New Intake',
         phone: body.phone || '555-000-0000',
