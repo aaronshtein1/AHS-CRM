@@ -1,4 +1,4 @@
-// Comprehensive API client with live Neon Postgres backend integration, RingCentral Sync & seamless fallback engine
+// Comprehensive API client with live Neon Postgres backend integration, RingCentral Sync & Process Engine Fallback
 import { ringCentralService, normalizePhone } from './ringcentral';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 
@@ -43,7 +43,38 @@ export interface LeadItem {
   isCheckbackTooFar: boolean;
   isCheckbackOverdue: boolean;
   updates?: TimelineUpdate[];
+  processInstances?: any[];
+  tasks?: any[];
 }
+
+// Default initial templates list
+const defaultTemplates = [
+  {
+    id: 'tpl-1',
+    name: 'Standard Homecare Intake',
+    category: 'CLINICAL',
+    color: '#3b82f6',
+    description: 'Standard NYS Medicaid HHA/PCA intake authorization workflow.',
+    stages: [
+      { id: 'stg-1', name: 'Referral Intake', dueDays: 1, isFinalStage: false },
+      { id: 'stg-2', name: 'Medicaid CIN Verification', dueDays: 2, isFinalStage: false },
+      { id: 'stg-3', name: 'Clinical Evaluation & Form 485', dueDays: 3, isFinalStage: false },
+      { id: 'stg-4', name: 'Start of Care (SOC) Confirmation', dueDays: 5, isFinalStage: true }
+    ]
+  },
+  {
+    id: 'tpl-2',
+    name: 'NHTD / TBI Waiver Intake',
+    category: 'WAIVER',
+    color: '#10b981',
+    description: 'Specialized Nursing Home Transition & Diversion intake process.',
+    stages: [
+      { id: 'stg-10', name: 'Initial Screening', dueDays: 2, isFinalStage: false },
+      { id: 'stg-11', name: 'RRDS Referral Submission', dueDays: 7, isFinalStage: false },
+      { id: 'stg-12', name: 'Service Plan Development', dueDays: 14, isFinalStage: true }
+    ]
+  }
+];
 
 // Default initial leads list including John Doe (Unqualified Dead End)
 const defaultLeads: LeadItem[] = [
@@ -72,6 +103,7 @@ const defaultLeads: LeadItem[] = [
     checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(),
     isCheckbackTooFar: true,
     isCheckbackOverdue: false,
+    processInstances: [],
     updates: [
       {
         id: 'upd-101-1',
@@ -114,6 +146,7 @@ const defaultLeads: LeadItem[] = [
     checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(),
     isCheckbackTooFar: false,
     isCheckbackOverdue: true,
+    processInstances: [],
     updates: [
       {
         id: 'upd-102-1',
@@ -149,6 +182,7 @@ const defaultLeads: LeadItem[] = [
     checkbackDate: new Date(Date.now() + 3 * 86400000).toISOString(),
     isCheckbackTooFar: false,
     isCheckbackOverdue: false,
+    processInstances: [],
     updates: [
       {
         id: 'upd-103-1',
@@ -184,6 +218,7 @@ const defaultLeads: LeadItem[] = [
     checkbackDate: null,
     isCheckbackTooFar: false,
     isCheckbackOverdue: false,
+    processInstances: [],
     updates: [
       {
         id: 'upd-104-1',
@@ -192,34 +227,6 @@ const defaultLeads: LeadItem[] = [
         createdAt: new Date().toISOString(),
         createdBy: { firstName: 'Zevi', lastName: 'Spiegel' }
       }
-    ]
-  }
-];
-
-const defaultTemplates = [
-  {
-    id: 'tpl-1',
-    name: 'Standard Homecare Intake',
-    category: 'CLINICAL',
-    color: '#3b82f6',
-    description: 'Standard NYS Medicaid HHA/PCA intake authorization workflow.',
-    stages: [
-      { id: 'stg-1', name: 'Referral Intake', dueDays: 1 },
-      { id: 'stg-2', name: 'Medicaid CIN Verification', dueDays: 2 },
-      { id: 'stg-3', name: 'Clinical Evaluation & Form 485', dueDays: 3 },
-      { id: 'stg-4', name: 'Start of Care (SOC) Confirmation', dueDays: 5 }
-    ]
-  },
-  {
-    id: 'tpl-2',
-    name: 'NHTD / TBI Waiver Intake',
-    category: 'WAIVER',
-    color: '#10b981',
-    description: 'Specialized Nursing Home Transition & Diversion intake process.',
-    stages: [
-      { id: 'stg-10', name: 'Initial Screening', dueDays: 2 },
-      { id: 'stg-11', name: 'RRDS Referral Submission', dueDays: 7 },
-      { id: 'stg-12', name: 'Service Plan Development', dueDays: 14 }
     ]
   }
 ];
@@ -409,6 +416,91 @@ function handleMockFallback(path: string, options: RequestInit) {
     return defaultTemplates;
   }
 
+  // Processes Execution Fallback
+  if (path.includes('/api/processes')) {
+    if (path.includes('/start') && method === 'POST') {
+      const body = JSON.parse((options.body as string) || '{}');
+      const targetLead = mockState.leads.find(l => l.id === body.leadId) || mockState.leads[0];
+      const template = defaultTemplates.find(t => t.id === body.processTemplateId) || defaultTemplates[0];
+
+      const newInstance = {
+        id: `pi-${Date.now()}`,
+        leadId: targetLead.id,
+        processTemplateId: template.id,
+        processTemplate: template,
+        status: 'ACTIVE',
+        stageInstances: template.stages.map((stg: any, idx: number) => ({
+          id: `si-${Date.now()}-${idx}`,
+          stageTemplateId: stg.id,
+          stageTemplate: { ...stg, isFinalStage: idx === template.stages.length - 1 },
+          status: idx === 0 ? 'ACTIVE' : 'PENDING',
+          startedAt: idx === 0 ? new Date().toISOString() : null,
+          dueAt: idx === 0 ? new Date(Date.now() + stg.dueDays * 86400000).toISOString() : null
+        }))
+      };
+
+      if (!targetLead.processInstances) targetLead.processInstances = [];
+      targetLead.processInstances.unshift(newInstance);
+
+      if (!targetLead.updates) targetLead.updates = [];
+      targetLead.updates.unshift({
+        id: `upd-${Date.now()}`,
+        type: 'PROCESS_STARTED',
+        content: `Started process workflow: "${template.name}"`,
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+      });
+
+      saveLeadsToStorage();
+      return newInstance;
+    }
+
+    if (path.includes('/advance') && method === 'POST') {
+      const instanceId = path.split('/processes/')[1].split('/advance')[0];
+      for (const lead of mockState.leads) {
+        if (lead.processInstances) {
+          const inst = lead.processInstances.find((pi: any) => pi.id === instanceId);
+          if (inst) {
+            const activeIdx = inst.stageInstances.findIndex((si: any) => si.status === 'ACTIVE');
+            if (activeIdx !== -1) {
+              inst.stageInstances[activeIdx].status = 'COMPLETED';
+              inst.stageInstances[activeIdx].completedAt = new Date().toISOString();
+              if (activeIdx + 1 < inst.stageInstances.length) {
+                inst.stageInstances[activeIdx + 1].status = 'ACTIVE';
+                inst.stageInstances[activeIdx + 1].startedAt = new Date().toISOString();
+                const dueDays = inst.stageInstances[activeIdx + 1].stageTemplate.dueDays || 2;
+                inst.stageInstances[activeIdx + 1].dueAt = new Date(Date.now() + dueDays * 86400000).toISOString();
+              } else {
+                inst.status = 'CLOSED';
+                inst.outcome = 'WON';
+              }
+            }
+            saveLeadsToStorage();
+            return inst;
+          }
+        }
+      }
+    }
+
+    if (path.includes('/close') && method === 'POST') {
+      const body = JSON.parse((options.body as string) || '{}');
+      const instanceId = path.split('/processes/')[1].split('/close')[0];
+      for (const lead of mockState.leads) {
+        if (lead.processInstances) {
+          const inst = lead.processInstances.find((pi: any) => pi.id === instanceId);
+          if (inst) {
+            inst.status = 'CLOSED';
+            inst.outcome = body.outcome || 'WON';
+            inst.closedAt = new Date().toISOString();
+            if (body.lostReason) inst.lostReason = body.lostReason;
+            saveLeadsToStorage();
+            return inst;
+          }
+        }
+      }
+    }
+  }
+
   // Updates & Timeline endpoint handling
   if (path.includes('/api/updates')) {
     if (method === 'POST') {
@@ -532,11 +624,12 @@ function handleMockFallback(path: string, options: RequestInit) {
         checkbackDate: null,
         isCheckbackTooFar: false,
         isCheckbackOverdue: false,
+        processInstances: [],
         updates: [
           {
             id: `upd-${Date.now()}`,
             type: 'INTAKE_CREATED',
-            content: 'Lead profile initialized in Intake CRM.',
+            content: 'Lead profile created in Intake CRM.',
             createdAt: new Date().toISOString(),
             createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
           }
@@ -550,6 +643,7 @@ function handleMockFallback(path: string, options: RequestInit) {
       const lead = mockState.leads.find(l => l.id === lastPart);
       if (lead) {
         if (!lead.updates) lead.updates = [];
+        if (!lead.processInstances) lead.processInstances = [];
         return lead;
       }
     }
@@ -657,11 +751,13 @@ export const api = {
     const res = await apiFetch(`/api/leads/${id}`, { token });
     if (res && res.id) {
       if (!res.updates) res.updates = [];
+      if (!res.processInstances) res.processInstances = [];
       return res;
     }
     const found = mockState.leads.find(l => l.id === id);
     if (found) {
       if (!found.updates) found.updates = [];
+      if (!found.processInstances) found.processInstances = [];
       return found;
     }
     return null;
@@ -694,6 +790,7 @@ export const api = {
       checkbackDate: null,
       isCheckbackTooFar: false,
       isCheckbackOverdue: false,
+      processInstances: [],
       updates: [
         {
           id: `upd-${Date.now()}`,
@@ -859,8 +956,48 @@ export const api = {
     if (res && Array.isArray(res.templates)) return res.templates;
     return defaultTemplates;
   },
-  startProcess: (token: string, data: any) =>
-    apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token }),
+  startProcess: async (token: string, data: { leadId: string; processTemplateId: string }) => {
+    const res = await apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token });
+    const targetLead = mockState.leads.find(l => l.id === data.leadId);
+    const template = defaultTemplates.find(t => t.id === data.processTemplateId) || defaultTemplates[0];
+
+    if (targetLead) {
+      if (!targetLead.processInstances) targetLead.processInstances = [];
+      const newInst = res && res.id ? res : {
+        id: `pi-${Date.now()}`,
+        leadId: targetLead.id,
+        processTemplateId: template.id,
+        processTemplate: template,
+        status: 'ACTIVE',
+        stageInstances: template.stages.map((stg: any, idx: number) => ({
+          id: `si-${Date.now()}-${idx}`,
+          stageTemplateId: stg.id,
+          stageTemplate: { ...stg, isFinalStage: idx === template.stages.length - 1 },
+          status: idx === 0 ? 'ACTIVE' : 'PENDING',
+          startedAt: idx === 0 ? new Date().toISOString() : null,
+          dueAt: idx === 0 ? new Date(Date.now() + stg.dueDays * 86400000).toISOString() : null
+        }))
+      };
+
+      const exists = targetLead.processInstances.some(pi => pi.id === newInst.id);
+      if (!exists) {
+        targetLead.processInstances.unshift(newInst);
+      }
+
+      if (!targetLead.updates) targetLead.updates = [];
+      targetLead.updates.unshift({
+        id: `upd-${Date.now()}`,
+        type: 'PROCESS_STARTED',
+        content: `Started process workflow: "${template.name}"`,
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+      });
+
+      saveLeadsToStorage();
+      return newInst;
+    }
+    return res;
+  },
   advanceProcess: (token: string, instanceId: string, data?: { collectedDates?: Record<string, string> }) =>
     apiFetch(`/api/processes/${instanceId}/advance`, { method: 'POST', body: JSON.stringify(data || {}) }),
   closeProcess: (token: string, instanceId: string, data: { outcome: 'WON' | 'LOST'; lostReason?: string; collectedDates?: Record<string, string> }) =>
