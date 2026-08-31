@@ -1,10 +1,20 @@
-// Comprehensive API client with live Neon Postgres backend integration & seamless fallback engine
+// Comprehensive API client with live Neon Postgres backend integration, RingCentral Sync & seamless fallback engine
+import { ringCentralService, normalizePhone } from './ringcentral';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 
   (typeof window !== 'undefined' ? window.location.origin : 'https://intake-crm-dusky.vercel.app');
 
 interface FetchOptions extends RequestInit {
   token?: string;
+}
+
+export interface TimelineUpdate {
+  id: string;
+  type: string;
+  content: string;
+  createdAt: string;
+  createdBy: { firstName: string; lastName: string } | null;
+  leadId?: string;
 }
 
 export interface LeadItem {
@@ -32,6 +42,7 @@ export interface LeadItem {
   checkbackDate: string | null;
   isCheckbackTooFar: boolean;
   isCheckbackOverdue: boolean;
+  updates?: TimelineUpdate[];
 }
 
 // Default initial leads list including John Doe (Unqualified Dead End)
@@ -60,7 +71,23 @@ const defaultLeads: LeadItem[] = [
     updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
     checkbackDate: new Date(Date.now() + 10 * 86400000).toISOString(),
     isCheckbackTooFar: true,
-    isCheckbackOverdue: false
+    isCheckbackOverdue: false,
+    updates: [
+      {
+        id: 'upd-101-1',
+        type: 'STATUS_CHANGE',
+        content: 'Placed lead on hold due to missing physician documentation.',
+        createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+        createdBy: { firstName: 'Zevi', lastName: 'Spiegel' }
+      },
+      {
+        id: 'upd-101-2',
+        type: 'INTAKE_SUBMISSION',
+        content: 'Received initial hospital referral intake packet.',
+        createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+        createdBy: { firstName: 'System', lastName: 'Auto' }
+      }
+    ]
   },
   {
     id: 'lead-102',
@@ -86,7 +113,16 @@ const defaultLeads: LeadItem[] = [
     updatedAt: new Date(Date.now() - 8 * 86400000).toISOString(),
     checkbackDate: new Date(Date.now() - 1 * 86400000).toISOString(),
     isCheckbackTooFar: false,
-    isCheckbackOverdue: true
+    isCheckbackOverdue: true,
+    updates: [
+      {
+        id: 'upd-102-1',
+        type: 'INTAKE_SUBMISSION',
+        content: 'Submitted clinical Jotform packet JS-TEST-9901.',
+        createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
+        createdBy: null
+      }
+    ]
   },
   {
     id: 'lead-103',
@@ -112,7 +148,16 @@ const defaultLeads: LeadItem[] = [
     updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
     checkbackDate: new Date(Date.now() + 3 * 86400000).toISOString(),
     isCheckbackTooFar: false,
-    isCheckbackOverdue: false
+    isCheckbackOverdue: false,
+    updates: [
+      {
+        id: 'upd-103-1',
+        type: 'MANUAL_COMMENT',
+        content: 'Spoke with daughter regarding CDPAP personal assistant caregiver registration.',
+        createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+        createdBy: { firstName: 'Zevi', lastName: 'Spiegel' }
+      }
+    ]
   },
   {
     id: 'lead-104',
@@ -138,7 +183,16 @@ const defaultLeads: LeadItem[] = [
     updatedAt: new Date().toISOString(),
     checkbackDate: null,
     isCheckbackTooFar: false,
-    isCheckbackOverdue: false
+    isCheckbackOverdue: false,
+    updates: [
+      {
+        id: 'upd-104-1',
+        type: 'STATUS_CHANGE',
+        content: 'Lead marked as UNQUALIFIED (Dead End — Patient non-responsive / ineligible for homecare services).',
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: 'Zevi', lastName: 'Spiegel' }
+      }
+    ]
   }
 ];
 
@@ -254,7 +308,6 @@ if (typeof window !== 'undefined') {
     if (savedLeads) {
       const parsed = JSON.parse(savedLeads);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure lead-104 John Doe is present in savedLeads
         if (!parsed.some((l: any) => l.id === 'lead-104')) {
           parsed.push(defaultLeads[3]);
         }
@@ -355,6 +408,51 @@ function handleMockFallback(path: string, options: RequestInit) {
   if (path.includes('/api/processes/templates')) {
     return defaultTemplates;
   }
+
+  // Updates & Timeline endpoint handling
+  if (path.includes('/api/updates')) {
+    if (method === 'POST') {
+      const body = JSON.parse((options.body as string) || '{}');
+      const targetLeadId = body.leadId || body.lead?.id;
+      const targetLead = mockState.leads.find(l => l.id === targetLeadId) || mockState.leads[0];
+      
+      const newUpdate: TimelineUpdate = {
+        id: `upd-${Date.now()}`,
+        type: body.type || 'MANUAL_COMMENT',
+        content: body.content || body.notes || 'Timeline update added',
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+        leadId: targetLead ? targetLead.id : undefined
+      };
+
+      if (targetLead) {
+        if (!targetLead.updates) targetLead.updates = [];
+        targetLead.updates.unshift(newUpdate);
+        targetLead.updatedAt = new Date().toISOString();
+      }
+
+      mockState.activity.unshift({
+        id: newUpdate.id,
+        type: newUpdate.type,
+        content: newUpdate.content,
+        createdAt: newUpdate.createdAt,
+        createdBy: newUpdate.createdBy,
+        lead: targetLead ? { id: targetLead.id, firstName: targetLead.firstName, lastName: targetLead.lastName } : null
+      });
+
+      saveLeadsToStorage();
+      return newUpdate;
+    }
+
+    const urlObj = new URL(path, 'http://localhost');
+    const qLeadId = urlObj.searchParams.get('leadId');
+    if (qLeadId) {
+      const targetLead = mockState.leads.find(l => l.id === qLeadId);
+      return targetLead?.updates || [];
+    }
+    return mockState.activity;
+  }
+
   if (path.includes('/api/leads')) {
     const parts = path.split('/');
     const lastPart = parts[parts.length - 1].split('?')[0];
@@ -364,6 +462,24 @@ function handleMockFallback(path: string, options: RequestInit) {
       const idx = mockState.leads.findIndex(l => l.id === lastPart);
       if (idx !== -1) {
         mockState.leads[idx] = { ...mockState.leads[idx], ...body, updatedAt: new Date().toISOString() };
+        
+        // Log status change or update into lead.updates
+        if (body.status || body.lostReason || body.blockerType) {
+          if (!mockState.leads[idx].updates) mockState.leads[idx].updates = [];
+          const statusText = body.status ? `Status updated to ${body.status}` : '';
+          const reasonText = body.lostReason ? ` (Reason: ${body.lostReason})` : '';
+          const blockerText = body.blockerType ? ` (Blocker: ${body.blockerType})` : '';
+          
+          mockState.leads[idx].updates!.unshift({
+            id: `upd-${Date.now()}`,
+            type: 'STATUS_CHANGE',
+            content: `${statusText}${reasonText}${blockerText}`.trim(),
+            createdAt: new Date().toISOString(),
+            createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+            leadId: lastPart
+          });
+        }
+        
         saveLeadsToStorage();
         return mockState.leads[idx];
       }
@@ -372,15 +488,20 @@ function handleMockFallback(path: string, options: RequestInit) {
       const body = JSON.parse((options.body as string) || '{}');
       const leadId = parts[parts.length - 2];
       const lead = mockState.leads.find(l => l.id === leadId);
-      const newAct = {
+      const newAct: TimelineUpdate = {
         id: `act-${Date.now()}`,
         type: body.type || 'NOTE',
         content: body.content || body.notes || 'Activity recorded',
         createdAt: new Date().toISOString(),
         createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
-        lead: lead ? { id: lead.id, firstName: lead.firstName, lastName: lead.lastName } : null
+        leadId: leadId
       };
+      if (lead) {
+        if (!lead.updates) lead.updates = [];
+        lead.updates.unshift(newAct);
+      }
       mockState.activity.unshift(newAct);
+      saveLeadsToStorage();
       return newAct;
     }
     if (method === 'POST') {
@@ -410,7 +531,16 @@ function handleMockFallback(path: string, options: RequestInit) {
         updatedAt: new Date().toISOString(),
         checkbackDate: null,
         isCheckbackTooFar: false,
-        isCheckbackOverdue: false
+        isCheckbackOverdue: false,
+        updates: [
+          {
+            id: `upd-${Date.now()}`,
+            type: 'INTAKE_CREATED',
+            content: 'Lead profile initialized in Intake CRM.',
+            createdAt: new Date().toISOString(),
+            createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+          }
+        ]
       };
       mockState.leads.unshift(newLead);
       saveLeadsToStorage();
@@ -418,7 +548,10 @@ function handleMockFallback(path: string, options: RequestInit) {
     }
     if (method === 'GET' && lastPart && lastPart !== 'leads' && !lastPart.includes('?')) {
       const lead = mockState.leads.find(l => l.id === lastPart);
-      if (lead) return lead;
+      if (lead) {
+        if (!lead.updates) lead.updates = [];
+        return lead;
+      }
     }
     return { leads: mockState.leads, total: mockState.leads.length };
   }
@@ -480,7 +613,7 @@ export const api = {
   getRecentActivity: (token: string) =>
     apiFetch('/api/dashboard/recent-activity', { token }),
 
-  // Unified Leads lifecycle with robust normalization
+  // Unified Leads lifecycle with robust normalization & timeline synchronization
   getLeads: async (token: string, params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     const res = await apiFetch(`/api/leads${qs}`, { token });
@@ -522,9 +655,15 @@ export const api = {
   },
   getLead: async (token: string, id: string) => {
     const res = await apiFetch(`/api/leads/${id}`, { token });
-    if (res && res.id) return res;
+    if (res && res.id) {
+      if (!res.updates) res.updates = [];
+      return res;
+    }
     const found = mockState.leads.find(l => l.id === id);
-    if (found) return found;
+    if (found) {
+      if (!found.updates) found.updates = [];
+      return found;
+    }
     return null;
   },
   createLead: async (token: string, data: any) => {
@@ -554,7 +693,16 @@ export const api = {
       updatedAt: new Date().toISOString(),
       checkbackDate: null,
       isCheckbackTooFar: false,
-      isCheckbackOverdue: false
+      isCheckbackOverdue: false,
+      updates: [
+        {
+          id: `upd-${Date.now()}`,
+          type: 'INTAKE_CREATED',
+          content: 'Lead profile created in Intake CRM.',
+          createdAt: new Date().toISOString(),
+          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName }
+        }
+      ]
     };
 
     const existingIdx = mockState.leads.findIndex(l => l.id === newLead.id);
@@ -571,6 +719,24 @@ export const api = {
     const idx = mockState.leads.findIndex(l => l.id === id);
     if (idx !== -1) {
       mockState.leads[idx] = { ...mockState.leads[idx], ...data, updatedAt: new Date().toISOString() };
+      
+      // Auto-log status or blocker updates into timeline
+      if (data.status || data.lostReason || data.blockerType) {
+        if (!mockState.leads[idx].updates) mockState.leads[idx].updates = [];
+        const statusText = data.status ? `Status updated to ${data.status}` : '';
+        const reasonText = data.lostReason ? ` (Reason: ${data.lostReason})` : '';
+        const blockerText = data.blockerType ? ` (Blocker: ${data.blockerType})` : '';
+        
+        mockState.leads[idx].updates!.unshift({
+          id: `upd-${Date.now()}`,
+          type: 'STATUS_CHANGE',
+          content: `${statusText}${reasonText}${blockerText}`.trim(),
+          createdAt: new Date().toISOString(),
+          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+          leadId: id
+        });
+      }
+      
       saveLeadsToStorage();
     }
     return res || mockState.leads[idx];
@@ -579,11 +745,111 @@ export const api = {
     apiFetch(`/api/leads/${id}/activity`, { method: 'POST', body: JSON.stringify(data), token }),
 
   // Updates / Timeline
-  createUpdate: (token: string, data: any) =>
-    apiFetch('/api/updates', { method: 'POST', body: JSON.stringify(data), token }),
+  createUpdate: async (token: string, data: { leadId: string; content: string; type?: string }) => {
+    const res = await apiFetch('/api/updates', { method: 'POST', body: JSON.stringify(data), token });
+    const targetLead = mockState.leads.find(l => l.id === data.leadId);
+    if (targetLead) {
+      if (!targetLead.updates) targetLead.updates = [];
+      const exists = targetLead.updates.some(u => u.id === res?.id);
+      if (!exists) {
+        targetLead.updates.unshift({
+          id: res?.id || `upd-${Date.now()}`,
+          type: data.type || 'MANUAL_COMMENT',
+          content: data.content,
+          createdAt: new Date().toISOString(),
+          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+          leadId: data.leadId
+        });
+      }
+      saveLeadsToStorage();
+    }
+    return res;
+  },
   getUpdates: (token: string, params: Record<string, string>) => {
     const qs = '?' + new URLSearchParams(params).toString();
     return apiFetch(`/api/updates${qs}`, { token });
+  },
+
+  // RingCentral Hourly Sync Engine
+  syncRingCentral: async (token: string) => {
+    try {
+      const calls = await ringCentralService.fetchRecentCalls();
+      const smsList = await ringCentralService.fetchRecentSms();
+
+      let syncedCalls = 0;
+      let syncedSms = 0;
+      let syncedTranscripts = 0;
+
+      // Match calls to leads by phone number
+      for (const call of calls) {
+        const normFrom = normalizePhone(call.from.phoneNumber);
+        const normTo = normalizePhone(call.to.phoneNumber);
+        
+        const matchedLead = mockState.leads.find(l => {
+          const lPhone = normalizePhone(l.phone);
+          return lPhone && (lPhone === normFrom || lPhone === normTo);
+        });
+
+        if (matchedLead) {
+          if (!matchedLead.updates) matchedLead.updates = [];
+          const updateId = `rc-call-${call.id}`;
+          if (!matchedLead.updates.some(u => u.id === updateId)) {
+            const aiText = call.aiTranscript 
+              ? `\n🤖 AI Call Summary (${call.aiTranscript.sentiment}): ${call.aiTranscript.summary}\n📌 Action Items: ${call.aiTranscript.actionItems.join(', ')}\n📝 Full Transcript:\n${call.aiTranscript.transcriptText}`
+              : '';
+            
+            matchedLead.updates.unshift({
+              id: updateId,
+              type: 'RINGCENTRAL_CALL',
+              content: `📞 RingCentral ${call.direction} Call (${Math.round(call.duration / 60)} min) - ${call.result}${aiText}`,
+              createdAt: call.startTime,
+              createdBy: { firstName: 'RingCentral', lastName: 'AI Sync' },
+              leadId: matchedLead.id
+            });
+            syncedCalls++;
+            if (call.aiTranscript) syncedTranscripts++;
+          }
+        }
+      }
+
+      // Match SMS to leads by phone number
+      for (const sms of smsList) {
+        const normFrom = normalizePhone(sms.from.phoneNumber);
+        const normTo = normalizePhone(sms.to.phoneNumber);
+
+        const matchedLead = mockState.leads.find(l => {
+          const lPhone = normalizePhone(l.phone);
+          return lPhone && (lPhone === normFrom || lPhone === normTo);
+        });
+
+        if (matchedLead) {
+          if (!matchedLead.updates) matchedLead.updates = [];
+          const updateId = `rc-sms-${sms.id}`;
+          if (!matchedLead.updates.some(u => u.id === updateId)) {
+            matchedLead.updates.unshift({
+              id: updateId,
+              type: 'RINGCENTRAL_SMS',
+              content: `💬 RingCentral ${sms.direction} SMS: "${sms.subject}"`,
+              createdAt: sms.creationTime,
+              createdBy: { firstName: 'RingCentral', lastName: 'SMS Gateway' },
+              leadId: matchedLead.id
+            });
+            syncedSms++;
+          }
+        }
+      }
+
+      saveLeadsToStorage();
+      return {
+        syncedAt: new Date().toISOString(),
+        callsCount: syncedCalls,
+        smsCount: syncedSms,
+        transcriptsCount: syncedTranscripts
+      };
+    } catch (err) {
+      console.error('[RingCentral Sync Error]', err);
+      return { syncedAt: new Date().toISOString(), callsCount: 0, smsCount: 0, transcriptsCount: 0 };
+    }
   },
 
   // Processes & Templates

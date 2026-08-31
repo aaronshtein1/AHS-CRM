@@ -938,35 +938,62 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
 
       {activeTab === 'timeline' && (
         <div className="card">
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-            <input
-              className="form-input"
-              placeholder="Add a comment..."
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAddComment()}
-              id="lead-comment-input"
-            />
-            <button className="btn btn-primary btn-sm" onClick={handleAddComment} id="lead-comment-submit">
-              <MessageSquare size={14} /> Add
+          <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 8, flex: 1, minWidth: 260 }}>
+              <input
+                className="form-input"
+                placeholder="Add a comment or timeline note..."
+                value={comment}
+                onChange={e => setComment(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddComment()}
+                id="lead-comment-input"
+              />
+              <button className="btn btn-primary btn-sm" onClick={handleAddComment} id="lead-comment-submit">
+                <MessageSquare size={14} /> Add
+              </button>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={async () => {
+                try {
+                  await api.syncRingCentral(token);
+                  loadLead();
+                } catch (err) {
+                  console.error(err);
+                }
+              }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, borderColor: 'var(--accent-blue)', color: 'var(--accent-blue)' }}
+            >
+              <RefreshCw size={14} /> Sync RingCentral (Calls &amp; SMS)
             </button>
           </div>
           <div className="activity-feed">
-            {(lead.updates || []).map((upd: any) => (
-              <div className="activity-item" key={upd.id}>
-                <div className={`activity-dot ${upd.type?.toLowerCase() || 'manual'}`} />
-                <div className="activity-content">
-                  <div className="activity-text">{upd.content}</div>
-                  <div className="activity-meta">
-                    {upd.createdBy ? `${upd.createdBy.firstName} ${upd.createdBy.lastName}` : 'System'}
-                    {' · '}
-                    {new Date(upd.createdAt).toLocaleString()}
+            {(lead.updates || []).map((upd: any) => {
+              const isRingCentralCall = upd.type === 'RINGCENTRAL_CALL';
+              const isRingCentralSms = upd.type === 'RINGCENTRAL_SMS';
+
+              return (
+                <div className="activity-item" key={upd.id} style={{
+                  padding: 14, borderRadius: 8, marginBottom: 12,
+                  border: isRingCentralCall ? '1px solid rgba(59, 130, 246, 0.2)' : isRingCentralSms ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid var(--border)',
+                  background: isRingCentralCall ? 'rgba(59, 130, 246, 0.03)' : isRingCentralSms ? 'rgba(16, 185, 129, 0.03)' : 'var(--surface)'
+                }}>
+                  <div className={`activity-dot ${upd.type?.toLowerCase() || 'manual'}`} />
+                  <div className="activity-content">
+                    <div className="activity-text" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, fontSize: 13 }}>
+                      {upd.content}
+                    </div>
+                    <div className="activity-meta" style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                      {upd.createdBy ? `${upd.createdBy.firstName} ${upd.createdBy.lastName}` : 'System'}
+                      {' · '}
+                      {new Date(upd.createdAt).toLocaleString()}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {(!lead.updates || lead.updates.length === 0) && (
-              <div className="empty-state"><p>No activity yet</p></div>
+              <div className="empty-state"><p>No timeline activity yet</p></div>
             )}
           </div>
         </div>

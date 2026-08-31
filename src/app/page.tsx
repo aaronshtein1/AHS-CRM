@@ -75,6 +75,16 @@ export default function Home() {
     }
   }, []);
 
+  // Automated hourly RingCentral call log, SMS, and AI transcript background sync
+  useEffect(() => {
+    if (!token) return;
+    api.syncRingCentral(token);
+    const interval = setInterval(() => {
+      api.syncRingCentral(token);
+    }, 3600000); // Hourly sync interval
+    return () => clearInterval(interval);
+  }, [token]);
+
   const handleLogin = (u: User, t: string) => {
     const firstName = u.firstName || (u.name ? u.name.split(' ')[0] : 'Admin');
     const lastName = u.lastName || (u.name ? u.name.split(' ')[1] || 'User' : 'User');
