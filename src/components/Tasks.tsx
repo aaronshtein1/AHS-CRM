@@ -20,8 +20,8 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getLeads(token, {}).then(d => setLeads(d.leads)).catch(console.error);
-    api.getUsers(token).then(setUsers).catch(console.error);
+    api.getLeads(token, {}).then(d => setLeads(d?.leads || [])).catch(console.error);
+    api.getUsers(token).then(res => setUsers(Array.isArray(res) ? res : (res?.users || []))).catch(console.error);
   }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,7 +77,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
               <label className="form-label">Assign To</label>
               <select className="form-select" value={form.assignedToId} onChange={e => setForm({ ...form, assignedToId: e.target.value })}>
                 {users.map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                  <option key={u.id} value={u.id}>{u.firstName || u.name?.split(' ')[0]} {u.lastName || u.name?.split(' ')[1]}</option>
                 ))}
               </select>
             </div>
@@ -86,7 +86,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
               <select className="form-select" value={form.leadId} onChange={e => setForm({ ...form, leadId: e.target.value })}>
                 <option value="">None</option>
                 {leads.map((l: any) => (
-                  <option key={l.id} value={l.id}>{l.firstName} {l.lastName}</option>
+                  <option key={l.id} value={l.id}>{l.firstName || l.name?.split(' ')[0]} {l.lastName || l.name?.split(' ')[1]}</option>
                 ))}
               </select>
             </div>
@@ -168,7 +168,7 @@ export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { 
       if (filter === 'open') params.status = 'OPEN';
       if (filter === 'completed') params.status = 'COMPLETED';
       const data = await api.getTasks(token, params);
-      setTasks(data.tasks);
+      setTasks(data?.tasks || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -197,9 +197,9 @@ export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { 
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrowEnd = new Date(todayStart.getTime() + 2 * 86400000);
 
-  const overdue = tasks.filter(t => t.status !== 'COMPLETED' && t.dueAt && new Date(t.dueAt) < todayStart);
-  const dueToday = tasks.filter(t => t.status !== 'COMPLETED' && t.dueAt && new Date(t.dueAt) >= todayStart && new Date(t.dueAt) < tomorrowEnd);
-  const upcoming = tasks.filter(t => t.status !== 'COMPLETED' && (!t.dueAt || new Date(t.dueAt) >= tomorrowEnd));
+  const overdue = tasks.filter(t => t.status !== 'COMPLETED' && (t.dueAt || t.dueDate) && new Date(t.dueAt || t.dueDate) < todayStart);
+  const dueToday = tasks.filter(t => t.status !== 'COMPLETED' && (t.dueAt || t.dueDate) && new Date(t.dueAt || t.dueDate) >= todayStart && new Date(t.dueAt || t.dueDate) < tomorrowEnd);
+  const upcoming = tasks.filter(t => t.status !== 'COMPLETED' && (!(t.dueAt || t.dueDate) || new Date(t.dueAt || t.dueDate) >= tomorrowEnd));
   const completed = tasks.filter(t => t.status === 'COMPLETED');
 
   const groups = [
@@ -233,39 +233,43 @@ export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { 
             {group.tasks.length === 0 ? (
               <div className="card" style={{ padding: '16px 20px', color: 'var(--text-muted)' }}>None</div>
             ) : (
-              group.tasks.map(task => (
-                <div key={task.id} className={`task-card ${group.key === 'overdue' ? 'overdue' : ''} ${task.status === 'COMPLETED' ? 'completed' : ''}`}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button className="btn-icon" onClick={() => handleComplete(task.id)} disabled={task.status === 'COMPLETED'}>
-                      {task.status === 'COMPLETED' ? <CheckCircle2 size={20} color="var(--accent-green)" /> : <Circle size={20} />}
-                    </button>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, textDecoration: task.status === 'COMPLETED' ? 'line-through' : 'none', color: task.status === 'COMPLETED' ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                        {task.title}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 12, marginTop: 4 }}>
-                        <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
-                        {task.dueAt && <span><Clock size={11} /> {new Date(task.dueAt).toLocaleDateString()}</span>}
-                        {task.lead && (
-                          <span 
-                            style={{ color: 'var(--accent-blue)', cursor: 'pointer' }}
-                            onClick={() => onSelectLead?.(task.lead.id)}
-                            className="hover-underline"
-                          >
-                            {task.lead.firstName} {task.lead.lastName}
-                          </span>
-                        )}
-                        {task.assignedTo && <span>{task.assignedTo.firstName} {task.assignedTo.lastName}</span>}
-                      </div>
-                    </div>
-                    {task.status !== 'COMPLETED' && (
-                      <button className="btn-icon" onClick={() => setRescheduleTask(task)} title="Reschedule Task">
-                        <Clock size={16} />
+              group.tasks.map(task => {
+                const priorityClass = (task.priority || 'NORMAL').toLowerCase();
+                const dueDateVal = task.dueAt || task.dueDate;
+                return (
+                  <div key={task.id} className={`task-card ${group.key === 'overdue' ? 'overdue' : ''} ${task.status === 'COMPLETED' ? 'completed' : ''}`}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <button className="btn-icon" onClick={() => handleComplete(task.id)} disabled={task.status === 'COMPLETED'}>
+                        {task.status === 'COMPLETED' ? <CheckCircle2 size={20} color="var(--accent-green)" /> : <Circle size={20} />}
                       </button>
-                    )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, textDecoration: task.status === 'COMPLETED' ? 'line-through' : 'none', color: task.status === 'COMPLETED' ? 'var(--text-muted)' : 'var(--text-primary)' }}>
+                          {task.title}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 12, marginTop: 4 }}>
+                          <span className={`priority-badge priority-${priorityClass}`}>{task.priority || 'NORMAL'}</span>
+                          {dueDateVal && <span><Clock size={11} /> {new Date(dueDateVal).toLocaleDateString()}</span>}
+                          {task.lead && (
+                            <span 
+                              style={{ color: 'var(--accent-blue)', cursor: 'pointer' }}
+                              onClick={() => onSelectLead?.(task.lead.id)}
+                              className="hover-underline"
+                            >
+                              {task.lead.firstName || task.lead.name?.split(' ')[0]} {task.lead.lastName || task.lead.name?.split(' ')[1]}
+                            </span>
+                          )}
+                          {task.assignedTo && <span>{task.assignedTo.firstName || task.assignedTo.name?.split(' ')[0]} {task.assignedTo.lastName || task.assignedTo.name?.split(' ')[1]}</span>}
+                        </div>
+                      </div>
+                      {task.status !== 'COMPLETED' && (
+                        <button className="btn-icon" onClick={() => setRescheduleTask(task)} title="Reschedule Task">
+                          <Clock size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </motion.div>
         );
@@ -275,7 +279,7 @@ export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { 
         <CreateTaskModal token={token} userId={userId} onClose={() => setShowCreateModal(false)} onCreated={() => { setShowCreateModal(false); loadTasks(); }} />
       )}
       {rescheduleTask && (
-        <RescheduleTaskModal token={token} taskId={rescheduleTask.id} currentDue={rescheduleTask.dueAt} onClose={() => setRescheduleTask(null)} onRescheduled={() => { setRescheduleTask(null); loadTasks(); }} />
+        <RescheduleTaskModal token={token} taskId={rescheduleTask.id} currentDue={rescheduleTask.dueAt || rescheduleTask.dueDate} onClose={() => setRescheduleTask(null)} onRescheduled={() => { setRescheduleTask(null); loadTasks(); }} />
       )}
     </div>
   );

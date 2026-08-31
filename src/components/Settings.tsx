@@ -16,7 +16,8 @@ function UserManagement({ token }: { token: string }) {
 
   const loadUsers = async () => {
     try {
-      setUsers(await api.getUsers(token));
+      const res = await api.getUsers(token);
+      setUsers(Array.isArray(res) ? res : (res?.users || []));
     } catch (err) {
       console.error(err);
     } finally {
@@ -119,23 +120,26 @@ function UserManagement({ token }: { token: string }) {
             </tr>
           </thead>
           <tbody>
-            {users.map(u => (
-              <tr key={u.id} style={{ cursor: 'default' }}>
-                <td style={{ fontWeight: 600 }}>{u.firstName} {u.lastName}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{u.email || '—'}</td>
-                <td><span className={`role-badge role-${u.role.toLowerCase()}`}>{u.role.replace(/_/g, ' ')}</span></td>
-                <td style={{ color: 'var(--text-secondary)' }}>{u.department || '—'}</td>
-                <td>
-                  <button
-                    className={`btn btn-sm ${u.isActive ? 'btn-secondary' : 'btn-primary'}`}
-                    onClick={() => handleToggleActive(u.id, u.isActive)}
-                    style={{ fontSize: 11 }}
-                  >
-                    {u.isActive ? 'Active' : 'Inactive'}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {users.map(u => {
+              const roleClass = (u.role || 'REP').toLowerCase();
+              return (
+                <tr key={u.id} style={{ cursor: 'default' }}>
+                  <td style={{ fontWeight: 600 }}>{u.firstName || u.name?.split(' ')[0]} {u.lastName || u.name?.split(' ')[1]}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{u.email || '—'}</td>
+                  <td><span className={`role-badge role-${roleClass}`}>{(u.role || 'REP').replace(/_/g, ' ')}</span></td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{u.department || '—'}</td>
+                  <td>
+                    <button
+                      className={`btn btn-sm ${u.isActive ? 'btn-secondary' : 'btn-primary'}`}
+                      onClick={() => handleToggleActive(u.id, u.isActive)}
+                      style={{ fontSize: 11 }}
+                    >
+                      {u.isActive ? 'Active' : 'Inactive'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -303,7 +307,7 @@ export default function Settings({ token, user }: { token: string; user: any }) 
         <button className={`tab ${tab === 'processes' ? 'active' : ''}`} onClick={() => setTab('processes')}>
           <Shield size={14} /> Processes
         </button>
-        {user.role === 'ADMIN' && (
+        {user?.role === 'ADMIN' && (
           <button className={`tab ${tab === 'risk' ? 'active' : ''}`} onClick={() => setTab('risk')}>
             <TrendingUp size={14} /> Risk Weights
           </button>
@@ -312,7 +316,7 @@ export default function Settings({ token, user }: { token: string; user: any }) 
 
       {tab === 'users' && <UserManagement token={token} />}
       {tab === 'processes' && <ProcessTemplates token={token} />}
-      {tab === 'risk' && user.role === 'ADMIN' && <RiskWeightsManagement token={token} />}
+      {tab === 'risk' && user?.role === 'ADMIN' && <RiskWeightsManagement token={token} />}
     </div>
   );
 }

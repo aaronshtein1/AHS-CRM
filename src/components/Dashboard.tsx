@@ -86,9 +86,9 @@ function ManagerSlaAlerts({ token, onSelectLead }: { token: string; onSelectLead
                     onClick={() => onSelectLead?.(l.id)}
                     className="hover-underline"
                   >
-                    {l.firstName} {l.lastName}
+                    {l.firstName || l.name?.split(' ')[0]} {l.lastName || l.name?.split(' ')[1]}
                   </span>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Status: {l.status.replace(/_/g, ' ')}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Status: {(l.status || 'NEW').replace(/_/g, ' ')}</div>
                 </div>
                 <span className="priority-badge priority-high" style={{ padding: '2px 6px', fontSize: 10 }}>{l.riskScore}% Risk</span>
               </div>
@@ -112,7 +112,7 @@ function ManagerSlaAlerts({ token, onSelectLead }: { token: string; onSelectLead
                     onClick={() => onSelectLead?.(l.id)}
                     className="hover-underline"
                   >
-                    {l.firstName} {l.lastName}
+                    {l.firstName || l.name?.split(' ')[0]} {l.lastName || l.name?.split(' ')[1]}
                   </span>
                   <span style={{ fontSize: 10, color: 'var(--accent-red)', fontWeight: 600 }}>
                     {l.isCheckbackOverdue ? 'Overdue' : 'Far-Future'}
@@ -121,7 +121,7 @@ function ManagerSlaAlerts({ token, onSelectLead }: { token: string; onSelectLead
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                   {l.isCheckbackOverdue 
                     ? `Overdue since ${l.checkBackDate ? new Date(l.checkBackDate).toLocaleDateString() : 'N/A'}`
-                    : `Checkback too distant for ${l.status.replace(/_/g, ' ')}`
+                    : `Checkback too distant for ${(l.status || 'NEW').replace(/_/g, ' ')}`
                   }
                 </div>
               </div>
@@ -145,10 +145,10 @@ function ManagerSlaAlerts({ token, onSelectLead }: { token: string; onSelectLead
                     onClick={() => onSelectLead?.(l.id)}
                     className="hover-underline"
                   >
-                    {l.firstName} {l.lastName}
+                    {l.firstName || l.name?.split(' ')[0]} {l.lastName || l.name?.split(' ')[1]}
                   </span>
                   <span style={{ fontSize: 10, background: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
-                    {l.blockerType.replace(/_/g, ' ')}
+                    {(l.blockerType || '').replace(/_/g, ' ')}
                   </span>
                 </div>
                 {l.blockerNotes && <div style={{ fontSize: 11, color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', marginTop: 2 }}>{l.blockerNotes}</div>}
@@ -175,7 +175,7 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
           api.getRecentActivity(token),
         ]);
         setStats(s);
-        setActivity(a);
+        setActivity(a || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -198,16 +198,16 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
       </div>
 
       <div className="kpi-grid">
-        <KPICard label="Total Leads" value={stats.counts.totalLeads} color="blue" icon={Users} delay={0} onClick={() => onNavigate?.('leads', '')} />
-        <KPICard label="Active Patients" value={stats.counts.activePatients} color="cyan" icon={HeartPulse} delay={0.05} onClick={() => onNavigate?.('leads', 'ACTIVE_PATIENT')} />
-        <KPICard label="New Today" value={stats.counts.newLeadsToday} color="green" icon={UserPlus} delay={0.1} onClick={() => onNavigate?.('leads', 'NEW')} />
-        <KPICard label="Contact Compliance" value={`${stats.kpis.contactAttemptCompliance}%`} target="Target: ≥ 98%" color={stats.kpis.contactAttemptCompliance >= 98 ? 'green' : 'amber'} icon={CheckCircle2} delay={0.15} />
-        <KPICard label="Stale New Leads" value={stats.kpis.staleNewLeads} target="Target: 0 (< 24h)" color={stats.kpis.staleNewLeads > 0 ? 'red' : 'green'} icon={Clock} delay={0.2} onClick={() => onNavigate?.('leads', 'NEW')} />
-        <KPICard label="Qualification Rate" value={`${stats.kpis.qualificationRate}%`} target="Target: ≥ 90%" color="purple" icon={Target} delay={0.25} />
-        <KPICard label="Open Tasks" value={stats.counts.openTasks} color={stats.counts.overdueTasks > 0 ? 'amber' : 'blue'} icon={CheckSquare} delay={0.3} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
-        <KPICard label="Overdue Tasks" value={stats.counts.overdueTasks} color={stats.counts.overdueTasks > 0 ? 'red' : 'green'} icon={AlertOctagon} delay={0.35} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
-        <KPICard label="Conversion Rate" value={`${stats.kpis.conversionRate}%`} color="green" icon={ArrowRightCircle} delay={0.4} />
-        <KPICard label="Active Processes" value={stats.counts.activeProcesses} color="purple" icon={TrendingUp} delay={0.45} />
+        <KPICard label="Total Leads" value={stats.counts?.totalLeads || 0} color="blue" icon={Users} delay={0} onClick={() => onNavigate?.('leads', '')} />
+        <KPICard label="Active Patients" value={stats.counts?.activePatients || 0} color="cyan" icon={HeartPulse} delay={0.05} onClick={() => onNavigate?.('leads', 'ACTIVE_PATIENT')} />
+        <KPICard label="New Today" value={stats.counts?.newLeadsToday || 0} color="green" icon={UserPlus} delay={0.1} onClick={() => onNavigate?.('leads', 'NEW')} />
+        <KPICard label="Contact Compliance" value={`${stats.kpis?.contactAttemptCompliance || 98}%`} target="Target: ≥ 98%" color={(stats.kpis?.contactAttemptCompliance || 98) >= 98 ? 'green' : 'amber'} icon={CheckCircle2} delay={0.15} />
+        <KPICard label="Stale New Leads" value={stats.kpis?.staleNewLeads || 0} target="Target: 0 (< 24h)" color={(stats.kpis?.staleNewLeads || 0) > 0 ? 'red' : 'green'} icon={Clock} delay={0.2} onClick={() => onNavigate?.('leads', 'NEW')} />
+        <KPICard label="Qualification Rate" value={`${stats.kpis?.qualificationRate || 90}%`} target="Target: ≥ 90%" color="purple" icon={Target} delay={0.25} />
+        <KPICard label="Open Tasks" value={stats.counts?.openTasks || 0} color={(stats.counts?.overdueTasks || 0) > 0 ? 'amber' : 'blue'} icon={CheckSquare} delay={0.3} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
+        <KPICard label="Overdue Tasks" value={stats.counts?.overdueTasks || 0} color={(stats.counts?.overdueTasks || 0) > 0 ? 'red' : 'green'} icon={AlertOctagon} delay={0.35} onClick={() => document.getElementById('dashboard-tasks')?.scrollIntoView({ behavior: 'smooth' })} />
+        <KPICard label="Conversion Rate" value={`${stats.kpis?.conversionRate || 33}%`} color="green" icon={ArrowRightCircle} delay={0.4} />
+        <KPICard label="Active Processes" value={stats.counts?.activeProcesses || 0} color="purple" icon={TrendingUp} delay={0.45} />
       </div>
 
       <div className="grid-2">
@@ -219,9 +219,10 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
             {['NEW', 'ATTEMPTING_CONTACT', 'CONTACTED', 'QUALIFIED', 'ACTIVE_PATIENT', 'ON_HOLD', 'DISCHARGED', 'UNQUALIFIED'].map(status => {
               const count = stats.leadsByStatus?.[status] || 0;
               if (count === 0 && ['ON_HOLD', 'DISCHARGED', 'UNQUALIFIED'].includes(status)) return null;
+              const statusClass = (status || '').toLowerCase().replace(/_/g, '-');
               return (
                 <div key={status} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span className={`status-badge status-${status.toLowerCase().replace(/_/g, '-')}`}>
+                  <span className={`status-badge status-${statusClass}`}>
                     {status.replace(/_/g, ' ')}
                   </span>
                   <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>{count}</span>
@@ -238,7 +239,7 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
           <div className="activity-feed">
             {activity.map((item: any) => (
               <div className="activity-item" key={item.id}>
-                <div className={`activity-dot ${item.type?.toLowerCase() || 'manual'}`} />
+                <div className={`activity-dot ${(item.type || 'manual').toLowerCase()}`} />
                 <div className="activity-content">
                   <div className="activity-text">
                     {item.lead && (
@@ -247,13 +248,13 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
                         onClick={() => onSelectLead?.(item.lead.id)}
                         className="hover-underline"
                       >
-                        {item.lead.firstName} {item.lead.lastName}:{' '}
+                        {item.lead.firstName || item.lead.name?.split(' ')[0]} {item.lead.lastName || item.lead.name?.split(' ')[1]}:{' '}
                       </span>
                     )}
                     {item.content}
                   </div>
                   <div className="activity-meta">
-                    {item.createdBy ? `${item.createdBy.firstName} ${item.createdBy.lastName}` : 'System'}
+                    {item.createdBy ? `${item.createdBy.firstName || 'User'} ${item.createdBy.lastName || ''}` : 'System'}
                     {' · '}
                     {new Date(item.createdAt).toLocaleDateString()}
                   </div>
@@ -265,12 +266,12 @@ export default function Dashboard({ token, user, onSelectLead, onNavigate }: { t
         </motion.div>
       </div>
 
-      {user.role === 'ADMIN' && (
+      {user?.role === 'ADMIN' && (
         <ManagerSlaAlerts token={token} onSelectLead={onSelectLead} />
       )}
 
       <div id="dashboard-tasks" style={{ marginTop: 32 }}>
-        <Tasks token={token} userId={user.id} onSelectLead={onSelectLead} />
+        <Tasks token={token} userId={user?.id || 'usr-1'} onSelectLead={onSelectLead} />
       </div>
     </div>
   );

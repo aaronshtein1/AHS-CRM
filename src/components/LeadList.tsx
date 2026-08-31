@@ -151,8 +151,8 @@ export default function LeadList({ token, onSelectLead, initialFilter }: { token
       if (search) params.search = search;
       if (statusFilter) params.status = statusFilter;
       const data = await api.getLeads(token, params);
-      setLeads(data.leads);
-      setTotal(data.total);
+      setLeads(data?.leads || []);
+      setTotal(data?.total || 0);
     } catch (err) {
       console.error(err);
     } finally {
@@ -205,23 +205,27 @@ export default function LeadList({ token, onSelectLead, initialFilter }: { token
             </tr>
           </thead>
           <tbody>
-            {leads.map(lead => (
-              <tr key={lead.id} onClick={() => onSelectLead(lead.id)}>
-                <td style={{ fontWeight: 600 }}>{lead.firstName} {lead.lastName}</td>
-                <td>
-                  <span className={`status-badge status-${lead.status.toLowerCase().replace(/_/g, '-')}`}>
-                    {lead.status.replace(/_/g, ' ')}
-                  </span>
-                </td>
-                <td style={{ color: 'var(--text-secondary)' }}>{lead.source?.replace(/_/g, ' ')}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{lead.serviceType || '—'}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>{lead.county || '—'}</td>
-                <td>{lead.totalCallAttempts}</td>
-                <td style={{ color: 'var(--text-secondary)' }}>
-                  {lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : '—'}
-                </td>
-              </tr>
-            ))}
+            {leads.map(lead => {
+              const statusClass = (lead.status || lead.stage || 'NEW').toLowerCase().replace(/_/g, '-');
+              const statusLabel = (lead.status || lead.stage || 'NEW').replace(/_/g, ' ');
+              return (
+                <tr key={lead.id} onClick={() => onSelectLead(lead.id)}>
+                  <td style={{ fontWeight: 600 }}>{lead.firstName || lead.name?.split(' ')[0]} {lead.lastName || lead.name?.split(' ')[1]}</td>
+                  <td>
+                    <span className={`status-badge status-${statusClass}`}>
+                      {statusLabel}
+                    </span>
+                  </td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{lead.source?.replace(/_/g, ' ') || '—'}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{lead.serviceType || '—'}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{lead.county || '—'}</td>
+                  <td>{lead.totalCallAttempts || 0}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>
+                    {lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : (lead.assignedTo || '—')}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {leads.length === 0 && !loading && <div className="empty-state"><p>No leads found</p></div>}
