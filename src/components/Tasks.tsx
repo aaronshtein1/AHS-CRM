@@ -8,6 +8,16 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
+function formatName(person: any): string {
+  if (!person) return '—';
+  if (typeof person === 'string') return person;
+  if (person.firstName || person.lastName) {
+    return `${person.firstName || ''} ${person.lastName || ''}`.trim();
+  }
+  if (person.name && typeof person.name === 'string') return person.name;
+  return '—';
+}
+
 function CreateTaskModal({ token, userId, onClose, onCreated }: {
   token: string; userId: string; onClose: () => void; onCreated: () => void;
 }) {
@@ -77,7 +87,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
               <label className="form-label">Assign To</label>
               <select className="form-select" value={form.assignedToId} onChange={e => setForm({ ...form, assignedToId: e.target.value })}>
                 {users.map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.firstName || u.name?.split(' ')[0]} {u.lastName || u.name?.split(' ')[1]}</option>
+                  <option key={u.id} value={u.id}>{formatName(u)}</option>
                 ))}
               </select>
             </div>
@@ -86,7 +96,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
               <select className="form-select" value={form.leadId} onChange={e => setForm({ ...form, leadId: e.target.value })}>
                 <option value="">None</option>
                 {leads.map((l: any) => (
-                  <option key={l.id} value={l.id}>{l.firstName || l.name?.split(' ')[0]} {l.lastName || l.name?.split(' ')[1]}</option>
+                  <option key={l.id} value={l.id}>{formatName(l)}</option>
                 ))}
               </select>
             </div>
@@ -106,7 +116,7 @@ function CreateTaskModal({ token, userId, onClose, onCreated }: {
 function RescheduleTaskModal({ token, taskId, currentDue, onClose, onRescheduled }: {
   token: string; taskId: string; currentDue: string; onClose: () => void; onRescheduled: () => void;
 }) {
-  const [newDueAt, setNewDueAt] = useState(currentDue ? currentDue.split('T')[0] : '');
+  const [newDueAt, setNewDueAt] = useState(currentDue && typeof currentDue === 'string' ? currentDue.split('T')[0] : '');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -255,10 +265,10 @@ export default function Tasks({ token, userId, onSelectLead, defaultFilter }: { 
                               onClick={() => onSelectLead?.(task.lead.id)}
                               className="hover-underline"
                             >
-                              {task.lead.firstName || task.lead.name?.split(' ')[0]} {task.lead.lastName || task.lead.name?.split(' ')[1]}
+                              {formatName(task.lead)}
                             </span>
                           )}
-                          {task.assignedTo && <span>{task.assignedTo.firstName || task.assignedTo.name?.split(' ')[0]} {task.assignedTo.lastName || task.assignedTo.name?.split(' ')[1]}</span>}
+                          {task.assignedTo && <span>{formatName(task.assignedTo)}</span>}
                         </div>
                       </div>
                       {task.status !== 'COMPLETED' && (
