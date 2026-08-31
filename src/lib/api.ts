@@ -9,6 +9,8 @@ interface FetchOptions extends RequestInit {
 
 export interface LeadItem {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
   phone: string;
   email: string;
@@ -28,13 +30,14 @@ export interface LeadItem {
 
 // In-memory persistent state for demo/standalone operations
 const mockState: {
-  user: { id: string; name: string; email: string; role: string };
+  user: { id: string; firstName: string; lastName: string; name: string; email: string; role: string };
   token: string;
   settings: Record<string, any>;
   leads: LeadItem[];
   tasks: any[];
+  activity: any[];
 } = {
-  user: { id: 'usr-1', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN' },
+  user: { id: 'usr-1', firstName: 'Zevi', lastName: 'Spiegel', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN' },
   token: 'mock-jwt-token-zevi-spiegel',
   settings: {
     risk_weights: {
@@ -48,6 +51,8 @@ const mockState: {
   leads: [
     {
       id: 'lead-101',
+      firstName: 'Eleanor',
+      lastName: 'Vance',
       name: 'Eleanor Vance',
       phone: '555-019-2831',
       email: 'eleanor.vance@example.com',
@@ -66,6 +71,8 @@ const mockState: {
     },
     {
       id: 'lead-102',
+      firstName: 'Marcus',
+      lastName: 'Brody',
       name: 'Marcus Brody',
       phone: '555-014-9923',
       email: 'marcus.brody@example.com',
@@ -84,6 +91,8 @@ const mockState: {
     },
     {
       id: 'lead-103',
+      firstName: 'Sophia',
+      lastName: 'Martinez',
       name: 'Sophia Martinez',
       phone: '555-017-3341',
       email: 'sophia.m@example.com',
@@ -104,6 +113,24 @@ const mockState: {
   tasks: [
     { id: 'task-1', title: 'Verify Medicaid CIN for Eleanor Vance', dueDate: new Date(Date.now() - 86400000).toISOString(), status: 'OPEN', leadId: 'lead-101', priority: 'HIGH' },
     { id: 'task-2', title: 'Follow up on intake call for Marcus Brody', dueDate: new Date().toISOString(), status: 'OPEN', leadId: 'lead-102', priority: 'URGENT' }
+  ],
+  activity: [
+    {
+      id: 'act-1',
+      type: 'STATUS_CHANGE',
+      content: 'Placed lead on hold due to missing physician documentation.',
+      createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+      createdBy: { firstName: 'Zevi', lastName: 'Spiegel' },
+      lead: { id: 'lead-101', firstName: 'Eleanor', lastName: 'Vance' }
+    },
+    {
+      id: 'act-2',
+      type: 'INTAKE_SUBMISSION',
+      content: 'Submitted clinical Jotform packet JS-TEST-9901.',
+      createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
+      createdBy: null,
+      lead: { id: 'lead-102', firstName: 'Marcus', lastName: 'Brody' }
+    }
   ]
 };
 
@@ -146,12 +173,32 @@ function handleMockFallback(path: string, options: RequestInit) {
   }
   if (path.includes('/api/dashboard/stats')) {
     return {
-      totalLeads: mockState.leads.length,
-      activeIntakes: mockState.leads.filter(l => l.status === 'ACTIVE').length,
-      onHoldBottlenecks: mockState.leads.filter(l => l.status === 'ON_HOLD').length,
-      criticalEscalations: mockState.leads.filter(l => l.riskLevel === 'Critical').length,
-      checkbackViolations: mockState.leads.filter(l => l.isCheckbackOverdue || l.isCheckbackTooFar).length
+      counts: {
+        totalLeads: mockState.leads.length,
+        activePatients: mockState.leads.filter(l => l.status === 'ACTIVE').length,
+        newLeadsToday: mockState.leads.filter(l => l.stage === 'NEW').length,
+        openTasks: mockState.tasks.filter(t => t.status === 'OPEN').length,
+        overdueTasks: mockState.tasks.filter(t => t.status === 'OPEN' && new Date(t.dueDate) < new Date()).length,
+        activeProcesses: 2
+      },
+      kpis: {
+        contactAttemptCompliance: 98.5,
+        staleNewLeads: 0,
+        qualificationRate: 92.0,
+        conversionRate: 33.3
+      },
+      leadsByStatus: {
+        NEW: mockState.leads.filter(l => l.stage === 'NEW').length,
+        ATTEMPTING_CONTACT: 0,
+        CONTACTED: mockState.leads.filter(l => l.stage === 'CONTACTED').length,
+        QUALIFIED: mockState.leads.filter(l => l.stage === 'QUALIFIED').length,
+        ACTIVE_PATIENT: mockState.leads.filter(l => l.status === 'ACTIVE').length,
+        ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD').length
+      }
     };
+  }
+  if (path.includes('/api/dashboard/recent-activity')) {
+    return mockState.activity;
   }
   if (path.includes('/api/dashboard/pipeline')) {
     return {
@@ -166,19 +213,39 @@ function handleMockFallback(path: string, options: RequestInit) {
     };
   }
   if (path.includes('/api/leads')) {
-    if (method === 'PATCH') {
+    const parts = path.split('/');
+    const lastPart = parts[parts.length - 1].split('?')[0];
+
+    if (method === 'PATCH' && lastPart && lastPart !== 'leads') {
       const body = JSON.parse((options.body as string) || '{}');
-      const leadId = path.split('/').pop();
-      const idx = mockState.leads.findIndex(l => l.id === leadId);
+      const idx = mockState.leads.findIndex(l => l.id === lastPart);
       if (idx !== -1) {
         mockState.leads[idx] = { ...mockState.leads[idx], ...body, updatedAt: new Date().toISOString() };
         return mockState.leads[idx];
       }
     }
+    if (method === 'POST' && path.includes('/activity')) {
+      const body = JSON.parse((options.body as string) || '{}');
+      const leadId = parts[parts.length - 2];
+      const lead = mockState.leads.find(l => l.id === leadId);
+      const newAct = {
+        id: `act-${Date.now()}`,
+        type: body.type || 'NOTE',
+        content: body.content || body.notes || 'Activity recorded',
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+        lead: lead ? { id: lead.id, firstName: lead.firstName, lastName: lead.lastName } : null
+      };
+      mockState.activity.unshift(newAct);
+      return newAct;
+    }
     if (method === 'POST') {
       const body = JSON.parse((options.body as string) || '{}');
+      const nameParts = (body.name || 'New Intake').split(' ');
       const newLead: LeadItem = {
         id: `lead-${Date.now()}`,
+        firstName: nameParts[0] || 'New',
+        lastName: nameParts.slice(1).join(' ') || 'Intake',
         name: body.name || 'New Intake',
         phone: body.phone || '555-000-0000',
         email: body.email || 'intake@example.com',
@@ -198,6 +265,10 @@ function handleMockFallback(path: string, options: RequestInit) {
       mockState.leads.unshift(newLead);
       return newLead;
     }
+    if (method === 'GET' && lastPart && lastPart !== 'leads' && !lastPart.includes('?')) {
+      const lead = mockState.leads.find(l => l.id === lastPart);
+      if (lead) return lead;
+    }
     return { leads: mockState.leads, total: mockState.leads.length };
   }
   if (path.includes('/api/tasks')) {
@@ -213,13 +284,12 @@ function handleMockFallback(path: string, options: RequestInit) {
     return { conversionRate: '33%', avgIntakeHours: 4.2 };
   }
   if (path.includes('/api/settings')) {
+    const key = path.split('/').pop();
     if (method === 'POST') {
       const body = JSON.parse((options.body as string) || '{}');
-      const key = path.split('/').pop();
       if (key) (mockState.settings as any)[key] = body.value;
       return { success: true, value: body.value };
     }
-    const key = path.split('/').pop();
     return { key, value: (mockState.settings as any)[key || ''] || null };
   }
 

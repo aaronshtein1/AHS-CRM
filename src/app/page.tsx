@@ -17,8 +17,9 @@ import {
 interface User {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string;
+  lastName?: string;
+  name?: string;
   role: string;
   department?: string;
 }
@@ -31,7 +32,16 @@ export default function Home() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   const handleLogin = (u: User, t: string) => {
-    setUser(u);
+    // Normalize user object properties safely
+    const firstName = u.firstName || (u.name ? u.name.split(' ')[0] : 'Admin');
+    const lastName = u.lastName || (u.name ? u.name.split(' ')[1] || 'User' : 'User');
+    const normalizedUser = {
+      ...u,
+      firstName,
+      lastName,
+      role: u.role || 'ADMIN'
+    };
+    setUser(normalizedUser);
     setToken(t);
   };
 
@@ -57,6 +67,9 @@ export default function Home() {
   };
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
+
+  const firstName = user.firstName || (user.name ? user.name.split(' ')[0] : 'A');
+  const lastName = user.lastName || (user.name ? user.name.split(' ')[1] || 'U' : 'U');
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -92,10 +105,10 @@ export default function Home() {
           ))}
         </nav>
         <div className="sidebar-user">
-          <div className="user-avatar">{user.firstName[0]}{user.lastName[0]}</div>
+          <div className="user-avatar">{firstName[0]}{lastName[0]}</div>
           <div className="user-info">
-            <div className="user-name">{user.firstName} {user.lastName}</div>
-            <div className="user-role">{user.role.replace(/_/g, ' ')}</div>
+            <div className="user-name">{firstName} {lastName}</div>
+            <div className="user-role">{(user.role || 'ADMIN').replace(/_/g, ' ')}</div>
           </div>
           <button className="btn-icon" onClick={handleLogout} title="Logout" id="btn-logout">
             <LogOut size={16} />
