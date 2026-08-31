@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Users, Plus, X, RefreshCw, Shield, Clock, Search, TrendingUp
+  Users, Plus, RefreshCw, Shield, TrendingUp
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -20,6 +20,7 @@ function UserManagement({ token }: { token: string }) {
       setUsers(Array.isArray(res) ? res : (res?.users || []));
     } catch (err) {
       console.error(err);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -120,7 +121,7 @@ function UserManagement({ token }: { token: string }) {
             </tr>
           </thead>
           <tbody>
-            {users.map(u => {
+            {(Array.isArray(users) ? users : []).map(u => {
               const roleClass = (u.role || 'REP').toLowerCase();
               return (
                 <tr key={u.id} style={{ cursor: 'default' }}>
@@ -142,6 +143,7 @@ function UserManagement({ token }: { token: string }) {
             })}
           </tbody>
         </table>
+        {users.length === 0 && !loading && <div className="empty-state"><p>No users found</p></div>}
       </div>
     </div>
   );
@@ -152,25 +154,33 @@ function ProcessTemplates({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getTemplates(token).then(setTemplates).catch(console.error).finally(() => setLoading(false));
+    api.getTemplates(token)
+      .then(res => setTemplates(Array.isArray(res) ? res : (res?.templates || [])))
+      .catch(err => {
+        console.error(err);
+        setTemplates([]);
+      })
+      .finally(() => setLoading(false));
   }, [token]);
 
   if (loading) return <div className="empty-state"><RefreshCw className="animate-spin" /></div>;
 
+  const safeTemplates = Array.isArray(templates) ? templates : [];
+
   return (
     <div>
       <h3 className="section-title" style={{ marginBottom: 16 }}>Process Templates</h3>
-      {templates.map(t => (
+      {safeTemplates.map(t => (
         <motion.div key={t.id} className="card" style={{ marginBottom: 12 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.color }} />
+            <div style={{ width: 12, height: 12, borderRadius: '50%', background: t.color || 'var(--accent-blue)' }} />
             <h4 style={{ margin: 0 }}>{t.name}</h4>
             <span className="status-badge" style={{ fontSize: 11 }}>{t.category}</span>
           </div>
           <p style={{ color: 'var(--text-muted)', margin: '0 0 12px 0', fontSize: 13 }}>{t.description}</p>
           <div className="stepper" style={{ gap: 4 }}>
             {(t.stages || []).map((s: any, i: number) => (
-              <div key={s.id} className="stepper-step" style={{ padding: '6px 0' }}>
+              <div key={s.id || i} className="stepper-step" style={{ padding: '6px 0' }}>
                 <div className="stepper-indicator"><span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span></div>
                 <div className="stepper-label" style={{ fontSize: 12 }}>{s.name}{s.dueDays ? ` (${s.dueDays}d)` : ''}</div>
               </div>
@@ -178,6 +188,7 @@ function ProcessTemplates({ token }: { token: string }) {
           </div>
         </motion.div>
       ))}
+      {safeTemplates.length === 0 && !loading && <div className="empty-state"><p>No process templates found</p></div>}
     </div>
   );
 }
@@ -196,13 +207,14 @@ function RiskWeightsManagement({ token }: { token: string }) {
   useEffect(() => {
     api.getSetting(token, 'risk_weights')
       .then(res => {
-        if (res && res.value) {
+        const val = res?.value || res;
+        if (val) {
           setWeights({
-            ageWeight: res.value.ageWeight !== undefined ? res.value.ageWeight : 0.5,
-            overdueTaskWeight: res.value.overdueTaskWeight !== undefined ? res.value.overdueTaskWeight : 15,
-            missingDemoWeight: res.value.missingDemoWeight !== undefined ? res.value.missingDemoWeight : 10,
-            farFutureCheckbackWeight: res.value.farFutureCheckbackWeight !== undefined ? res.value.farFutureCheckbackWeight : 15,
-            inactiveWeight: res.value.inactiveWeight !== undefined ? res.value.inactiveWeight : 20
+            ageWeight: val.ageWeight !== undefined ? val.ageWeight : 0.5,
+            overdueTaskWeight: val.overdueTaskWeight !== undefined ? val.overdueTaskWeight : 15,
+            missingDemoWeight: val.missingDemoWeight !== undefined ? val.missingDemoWeight : 10,
+            farFutureCheckbackWeight: val.farFutureCheckbackWeight !== undefined ? val.farFutureCheckbackWeight : 15,
+            inactiveWeight: val.inactiveWeight !== undefined ? val.inactiveWeight : 20
           });
         }
       })
@@ -290,6 +302,8 @@ function RiskWeightsManagement({ token }: { token: string }) {
 
 export default function Settings({ token, user }: { token: string; user: any }) {
   const [tab, setTab] = useState('users');
+  const userRole = (user?.role || 'ADMIN').toUpperCase();
+  const isAdminOrManager = ['ADMIN', 'MANAGER'].includes(userRole);
 
   return (
     <div>
@@ -307,7 +321,7 @@ export default function Settings({ token, user }: { token: string; user: any }) 
         <button className={`tab ${tab === 'processes' ? 'active' : ''}`} onClick={() => setTab('processes')}>
           <Shield size={14} /> Processes
         </button>
-        {user?.role === 'ADMIN' && (
+        {isAdminOrManager && (
           <button className={`tab ${tab === 'risk' ? 'active' : ''}`} onClick={() => setTab('risk')}>
             <TrendingUp size={14} /> Risk Weights
           </button>
@@ -316,7 +330,7 @@ export default function Settings({ token, user }: { token: string; user: any }) 
 
       {tab === 'users' && <UserManagement token={token} />}
       {tab === 'processes' && <ProcessTemplates token={token} />}
-      {tab === 'risk' && user?.role === 'ADMIN' && <RiskWeightsManagement token={token} />}
+      {tab === 'risk' && isAdminOrManager && <RiskWeightsManagement token={token} />}
     </div>
   );
 }

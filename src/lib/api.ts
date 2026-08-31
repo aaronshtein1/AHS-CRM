@@ -116,27 +116,61 @@ const defaultLeads: LeadItem[] = [
   }
 ];
 
+const defaultTemplates = [
+  {
+    id: 'tpl-1',
+    name: 'Standard Homecare Intake',
+    category: 'CLINICAL',
+    color: '#3b82f6',
+    description: 'Standard NYS Medicaid HHA/PCA intake authorization workflow.',
+    stages: [
+      { id: 'stg-1', name: 'Referral Intake', dueDays: 1 },
+      { id: 'stg-2', name: 'Medicaid CIN Verification', dueDays: 2 },
+      { id: 'stg-3', name: 'Clinical Evaluation & Form 485', dueDays: 3 },
+      { id: 'stg-4', name: 'Start of Care (SOC) Confirmation', dueDays: 5 }
+    ]
+  },
+  {
+    id: 'tpl-2',
+    name: 'NHTD / TBI Waiver Intake',
+    category: 'WAIVER',
+    color: '#10b981',
+    description: 'Specialized Nursing Home Transition & Diversion intake process.',
+    stages: [
+      { id: 'stg-10', name: 'Initial Screening', dueDays: 2 },
+      { id: 'stg-11', name: 'RRDS Referral Submission', dueDays: 7 },
+      { id: 'stg-12', name: 'Service Plan Development', dueDays: 14 }
+    ]
+  }
+];
+
 // Persistent state for demo/standalone operations
 const mockState: {
-  user: { id: string; firstName: string; lastName: string; name: string; email: string; role: string };
+  user: { id: string; firstName: string; lastName: string; name: string; email: string; role: string; department?: string; isActive?: boolean };
   token: string;
   settings: Record<string, any>;
   leads: LeadItem[];
   tasks: any[];
   activity: any[];
+  users: any[];
 } = {
-  user: { id: 'usr-1', firstName: 'Zevi', lastName: 'Spiegel', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN' },
+  user: { id: 'usr-1', firstName: 'Zevi', lastName: 'Spiegel', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN', department: 'Intake Management', isActive: true },
   token: 'mock-jwt-token-zevi-spiegel',
   settings: {
     risk_weights: {
-      leadAgeWeight: 0.5,
-      overdueTaskPenalty: 15,
-      missingDemographicPenalty: 10,
-      farFutureCheckbackPenalty: 15,
-      inactivityPenalty: 20
+      ageWeight: 0.5,
+      overdueTaskWeight: 15,
+      missingDemoWeight: 10,
+      farFutureCheckbackWeight: 15,
+      inactiveWeight: 20
     }
   },
   leads: defaultLeads,
+  users: [
+    { id: 'usr-1', firstName: 'Zevi', lastName: 'Spiegel', name: 'Zevi Spiegel', email: 'admin@homecare4all.org', role: 'ADMIN', department: 'Intake Management', isActive: true },
+    { id: 'usr-2', firstName: 'Sarah', lastName: 'Jenkins', name: 'Sarah Jenkins', email: 'sjenkins@homecare4all.org', role: 'MANAGER', department: 'Clinical Intake', isActive: true },
+    { id: 'usr-3', firstName: 'David', lastName: 'Miller', name: 'David Miller', email: 'dmiller@homecare4all.org', role: 'INTAKE_SPECIALIST', department: 'Patient Services', isActive: true }
+  ],
   tasks: [
     {
       id: 'task-1',
@@ -261,7 +295,7 @@ function handleMockFallback(path: string, options: RequestInit) {
         ACTIVE_PATIENT: mockState.leads.filter(l => l.stage === 'ACTIVE_PATIENT' || l.status === 'ACTIVE_PATIENT' || l.status === 'ACTIVE').length,
         ON_HOLD: mockState.leads.filter(l => l.status === 'ON_HOLD').length,
         DISCHARGED: mockState.leads.filter(l => l.status === 'DISCHARGED').length,
-        UNQUALIFIED: mockState.leads.filter(l => l.status === 'UNQUALIFIED').length
+        UNQUALIFIED: mockState.leads.filter(l => l.stage === 'UNQUALIFIED' || l.status === 'UNQUALIFIED').length
       }
     };
   }
@@ -279,6 +313,9 @@ function handleMockFallback(path: string, options: RequestInit) {
       DISCHARGED: mockState.leads.filter(l => l.status === 'DISCHARGED'),
       UNQUALIFIED: mockState.leads.filter(l => l.stage === 'UNQUALIFIED' || l.status === 'UNQUALIFIED')
     };
+  }
+  if (path.includes('/api/processes/templates')) {
+    return defaultTemplates;
   }
   if (path.includes('/api/leads')) {
     const parts = path.split('/');
@@ -354,7 +391,22 @@ function handleMockFallback(path: string, options: RequestInit) {
     return { tasks: mockState.tasks };
   }
   if (path.includes('/api/users')) {
-    return [mockState.user];
+    if (method === 'POST') {
+      const body = JSON.parse((options.body as string) || '{}');
+      const newUser = {
+        id: `usr-${Date.now()}`,
+        firstName: body.firstName || 'New',
+        lastName: body.lastName || 'User',
+        name: `${body.firstName || 'New'} ${body.lastName || 'User'}`,
+        email: body.email || 'user@homecare4all.org',
+        role: body.role || 'COORDINATOR',
+        department: body.department || 'Intake',
+        isActive: true
+      };
+      mockState.users.push(newUser);
+      return newUser;
+    }
+    return mockState.users;
   }
   if (path.includes('/api/performance')) {
     return { conversionRate: '33%', avgIntakeHours: 4.2 };
@@ -366,7 +418,8 @@ function handleMockFallback(path: string, options: RequestInit) {
       if (key) (mockState.settings as any)[key] = body.value;
       return { success: true, value: body.value };
     }
-    return { key, value: (mockState.settings as any)[key || ''] || null };
+    const val = (mockState.settings as any)[key || ''] || mockState.settings.risk_weights;
+    return { key, value: val };
   }
 
   return { success: true };
@@ -495,9 +548,13 @@ export const api = {
     return apiFetch(`/api/updates${qs}`, { token });
   },
 
-  // Processes
-  getTemplates: (token: string) =>
-    apiFetch('/api/processes/templates', { token }),
+  // Processes & Templates
+  getTemplates: async (token: string) => {
+    const res = await apiFetch('/api/processes/templates', { token });
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.templates)) return res.templates;
+    return defaultTemplates;
+  },
   startProcess: (token: string, data: any) =>
     apiFetch('/api/processes/start', { method: 'POST', body: JSON.stringify(data), token }),
   advanceProcess: (token: string, instanceId: string, data?: { collectedDates?: Record<string, string> }) =>
@@ -520,8 +577,12 @@ export const api = {
     apiFetch(`/api/tasks/${id}`, { token }),
 
   // Users
-  getUsers: (token: string) =>
-    apiFetch('/api/users', { token }),
+  getUsers: async (token: string) => {
+    const res = await apiFetch('/api/users', { token });
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.users)) return res.users;
+    return mockState.users;
+  },
   createUser: (token: string, data: any) =>
     apiFetch('/api/users', { method: 'POST', body: JSON.stringify(data), token }),
   updateUser: (token: string, id: string, data: any) =>
