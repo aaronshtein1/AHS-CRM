@@ -45,21 +45,26 @@ export default function Home() {
         setUser(JSON.parse(savedUser));
 
         // Restore view from URL hash or localStorage
-        const hash = window.location.hash.replace('#', '');
-        if (hash.startsWith('lead/')) {
-          const leadId = hash.split('/')[1] || savedLeadId;
-          if (leadId) {
+        const rawHash = window.location.hash.replace('#', '');
+        if (rawHash.startsWith('lead/')) {
+          const leadId = rawHash.split('/')[1] || savedLeadId;
+          if (leadId && leadId !== 'undefined' && leadId !== 'null') {
             setSelectedLeadId(leadId);
             setView('lead-detail');
           } else {
             setView('leads');
+            window.location.hash = 'leads';
           }
-        } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(hash)) {
-          setView(hash);
+        } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(rawHash)) {
+          setView(rawHash);
         } else if (savedView) {
-          setView(savedView);
-          if (savedView === 'lead-detail' && savedLeadId) {
+          if (savedView === 'lead-detail' && savedLeadId && savedLeadId !== 'undefined' && savedLeadId !== 'null') {
             setSelectedLeadId(savedLeadId);
+            setView('lead-detail');
+          } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(savedView)) {
+            setView(savedView);
+          } else {
+            setView('dashboard');
           }
         }
       }
@@ -106,6 +111,12 @@ export default function Home() {
   };
 
   const handleSelectLead = (id: string) => {
+    if (!id || id === 'undefined' || id === 'null') {
+      console.warn('[handleSelectLead] Attempted to select invalid lead id:', id);
+      setView('leads');
+      window.location.hash = 'leads';
+      return;
+    }
     setSelectedLeadId(id);
     setView('lead-detail');
     try {
@@ -183,8 +194,12 @@ export default function Home() {
         {view === 'dashboard' && <Dashboard token={token} user={user} onSelectLead={handleSelectLead} onNavigate={handleNavigate} />}
         {view === 'pipeline' && <Pipeline token={token} onSelectLead={handleSelectLead} />}
         {view === 'leads' && <LeadList token={token} initialFilter={viewFilter} onSelectLead={handleSelectLead} />}
-        {view === 'lead-detail' && selectedLeadId && (
-          <LeadDetail token={token} leadId={selectedLeadId} onBack={() => handleNavigate('leads')} user={user} />
+        {view === 'lead-detail' && (
+          selectedLeadId && selectedLeadId !== 'undefined' && selectedLeadId !== 'null' ? (
+            <LeadDetail token={token} leadId={selectedLeadId} onBack={() => handleNavigate('leads')} user={user} />
+          ) : (
+            <LeadList token={token} initialFilter="" onSelectLead={handleSelectLead} />
+          )
         )}
         {view === 'tasks' && <Tasks token={token} userId={user.id} onSelectLead={handleSelectLead} />}
         {view === 'performance' && <PerformanceReview token={token} onSelectLead={handleSelectLead} />}
