@@ -34,7 +34,7 @@ export interface LeadItem {
   isCheckbackOverdue: boolean;
 }
 
-// Default initial leads list
+// Default initial leads list including John Doe (Unqualified Dead End)
 const defaultLeads: LeadItem[] = [
   {
     id: 'lead-101',
@@ -111,6 +111,32 @@ const defaultLeads: LeadItem[] = [
     createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
     updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
     checkbackDate: new Date(Date.now() + 3 * 86400000).toISOString(),
+    isCheckbackTooFar: false,
+    isCheckbackOverdue: false
+  },
+  {
+    id: 'lead-104',
+    firstName: 'John',
+    lastName: 'Doe',
+    name: 'John Doe',
+    phone: '555-018-4421',
+    email: 'john.doe@example.com',
+    stage: 'UNQUALIFIED',
+    status: 'UNQUALIFIED',
+    source: 'WEBSITE',
+    serviceType: 'HHA/PCA',
+    county: 'NEW YORK',
+    payerType: 'MEDICAID',
+    totalCallAttempts: 5,
+    owner: { firstName: 'Zevi', lastName: 'Spiegel' },
+    blockerType: 'UNQUALIFIED_DEAD_END',
+    blockerNotes: 'Dead end: Patient non-responsive / ineligible for homecare services.',
+    riskLevel: 'Normal',
+    riskScore: 0,
+    assignedTo: 'Zevi Spiegel',
+    createdAt: new Date(Date.now() - 15 * 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+    checkbackDate: null,
     isCheckbackTooFar: false,
     isCheckbackOverdue: false
   }
@@ -209,6 +235,14 @@ const mockState: {
       createdAt: new Date(Date.now() - 12 * 86400000).toISOString(),
       createdBy: null,
       lead: { id: 'lead-102', firstName: 'Marcus', lastName: 'Brody' }
+    },
+    {
+      id: 'act-3',
+      type: 'STATUS_CHANGE',
+      content: 'Lead marked as UNQUALIFIED (Dead End — Patient non-responsive / ineligible for homecare services).',
+      createdAt: new Date().toISOString(),
+      createdBy: { firstName: 'Zevi', lastName: 'Spiegel' },
+      lead: { id: 'lead-104', firstName: 'John', lastName: 'Doe' }
     }
   ]
 };
@@ -220,6 +254,10 @@ if (typeof window !== 'undefined') {
     if (savedLeads) {
       const parsed = JSON.parse(savedLeads);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        // Ensure lead-104 John Doe is present in savedLeads
+        if (!parsed.some((l: any) => l.id === 'lead-104')) {
+          parsed.push(defaultLeads[3]);
+        }
         mockState.leads = parsed;
       }
     }
