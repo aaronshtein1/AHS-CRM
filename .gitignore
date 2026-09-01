@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js build outputs
+.next/
+out/
+build/
+dist/
+
+# Vercel & Environment
+.vercel
+.env*
+!.env.example
+
+# Testing & Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# Temporary / Scratch Scripts & Raw JSON Dumps
+*.py
+ts_leads_data.json
+ts_tasks_data.json
+
+# IDE & OS
+.DS_Store
+*.pem
+.idea/
+.vscode/

@@ -3,16 +3,20 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Users, Plus, RefreshCw, Shield, TrendingUp
+  Users, Plus, RefreshCw, Shield, TrendingUp, Edit3
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
-function UserManagement({ token }: { token: string }) {
+function UserManagement({ token, currentUser }: { token: string; currentUser: any }) {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', role: 'REP', department: '' });
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', role: 'REP', department: '', isActive: true });
   const [saving, setSaving] = useState(false);
+
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
 
   const loadUsers = async () => {
     try {
@@ -30,6 +34,7 @@ function UserManagement({ token }: { token: string }) {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) return alert('Only administrators can add new team members.');
     setSaving(true);
     try {
       await api.createUser(token, form);
@@ -43,7 +48,36 @@ function UserManagement({ token }: { token: string }) {
     }
   };
 
+  const handleStartEdit = (u: any) => {
+    if (!isAdmin) return;
+    setEditingUser(u);
+    setEditForm({
+      firstName: u.firstName || u.name?.split(' ')[0] || '',
+      lastName: u.lastName || u.name?.split(' ')[1] || '',
+      email: u.email || '',
+      role: u.role || 'REP',
+      department: u.department || '',
+      isActive: u.isActive !== undefined ? u.isActive : true
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || !isAdmin) return;
+    setSaving(true);
+    try {
+      await api.updateUser(token, editingUser.id, editForm);
+      setEditingUser(null);
+      loadUsers();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleToggleActive = async (userId: string, isActive: boolean) => {
+    if (!isAdmin) return;
     try {
       await api.updateUser(token, userId, { isActive: !isActive });
       loadUsers();
@@ -55,14 +89,20 @@ function UserManagement({ token }: { token: string }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h3 className="section-title" style={{ margin: 0 }}>Team Members</h3>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(!showCreate)}>
-          <Plus size={14} /> Add User
-        </button>
+        <div>
+          <h3 className="section-title" style={{ margin: 0 }}>Team Members</h3>
+          {!isAdmin && <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'var(--text-muted)' }}>Read-only view (Admin access required to modify user roles and settings)</p>}
+        </div>
+        {isAdmin && (
+          <button className="btn btn-primary btn-sm" onClick={() => { setShowCreate(!showCreate); setEditingUser(null); }}>
+            <Plus size={14} /> Add User
+          </button>
+        )}
       </div>
 
-      {showCreate && (
+      {showCreate && isAdmin && (
         <motion.div className="card" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ marginBottom: 16, background: 'var(--surface-raised)' }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 14 }}>Create New Team Member</h4>
           <form onSubmit={handleCreate}>
             <div className="grid-2">
               <div className="form-group">
@@ -109,6 +149,58 @@ function UserManagement({ token }: { token: string }) {
         </motion.div>
       )}
 
+      {editingUser && isAdmin && (
+        <motion.div className="card" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ marginBottom: 16, background: 'var(--surface-raised)', borderLeft: '4px solid var(--accent-blue)' }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 14 }}>Edit Team Member Details</h4>
+          <form onSubmit={handleSaveEdit}>
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">First Name *</label>
+                <input className="form-input" required value={editForm.firstName} onChange={e => setEditForm({ ...editForm, firstName: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Last Name *</label>
+                <input className="form-input" required value={editForm.lastName} onChange={e => setEditForm({ ...editForm, lastName: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Email *</label>
+                <input className="form-input" type="email" required value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select className="form-select" value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}>
+                  <option value="ADMIN">Admin</option>
+                  <option value="MANAGER">Manager</option>
+                  <option value="INTAKE_SPECIALIST">Intake Specialist</option>
+                  <option value="COORDINATOR">Coordinator</option>
+                  <option value="REP">Rep</option>
+                  <option value="MARKETER">Marketer</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Department</label>
+                <input className="form-input" value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Account Status</label>
+                <select className="form-select" value={editForm.isActive ? 'true' : 'false'} onChange={e => setEditForm({ ...editForm, isActive: e.target.value === 'true' })}>
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingUser(null)}>Cancel</button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>{saving ? 'Saving...' : 'Save User Edits'}</button>
+            </div>
+          </form>
+        </motion.div>
+      )}
+
       <div className="card">
         <table className="data-table">
           <thead>
@@ -118,6 +210,7 @@ function UserManagement({ token }: { token: string }) {
               <th>Role</th>
               <th>Department</th>
               <th>Status</th>
+              {isAdmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -130,14 +223,31 @@ function UserManagement({ token }: { token: string }) {
                   <td><span className={`role-badge role-${roleClass}`}>{(u.role || 'REP').replace(/_/g, ' ')}</span></td>
                   <td style={{ color: 'var(--text-secondary)' }}>{u.department || '—'}</td>
                   <td>
-                    <button
-                      className={`btn btn-sm ${u.isActive ? 'btn-secondary' : 'btn-primary'}`}
-                      onClick={() => handleToggleActive(u.id, u.isActive)}
-                      style={{ fontSize: 11 }}
-                    >
-                      {u.isActive ? 'Active' : 'Inactive'}
-                    </button>
+                    {isAdmin ? (
+                      <button
+                        className={`btn btn-sm ${u.isActive ? 'btn-secondary' : 'btn-primary'}`}
+                        onClick={() => handleToggleActive(u.id, u.isActive)}
+                        style={{ fontSize: 11 }}
+                      >
+                        {u.isActive ? 'Active' : 'Inactive'}
+                      </button>
+                    ) : (
+                      <span className={`status-badge ${u.isActive ? 'status-active' : 'status-unqualified'}`} style={{ fontSize: 11 }}>
+                        {u.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    )}
                   </td>
+                  {isAdmin && (
+                    <td>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleStartEdit(u)}
+                        style={{ fontSize: 11, padding: '4px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                      >
+                        <Edit3 size={12} /> Edit
+                      </button>
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -169,7 +279,7 @@ function ProcessTemplates({ token }: { token: string }) {
 
   return (
     <div>
-      <h3 className="section-title" style={{ marginBottom: 16 }}>Process Templates</h3>
+      <h3 className="section-title" style={{ marginBottom: 16 }}>Approved Process Templates</h3>
       {safeTemplates.map(t => (
         <motion.div key={t.id} className="card" style={{ marginBottom: 12 }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -182,7 +292,7 @@ function ProcessTemplates({ token }: { token: string }) {
             {(t.stages || []).map((s: any, i: number) => (
               <div key={s.id || i} className="stepper-step" style={{ padding: '6px 0' }}>
                 <div className="stepper-indicator"><span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>{i + 1}</span></div>
-                <div className="stepper-label" style={{ fontSize: 12 }}>{s.name}{s.dueDays ? ` (${s.dueDays}d)` : ''}</div>
+                <div className="stepper-label" style={{ fontSize: 12 }}>{s.name}{s.dueDays ? ` (${s.dueDays}d SLA)` : ''}</div>
               </div>
             ))}
           </div>
@@ -300,10 +410,199 @@ function RiskWeightsManagement({ token }: { token: string }) {
   );
 }
 
+function DropdownManagement({ token, currentUser }: { token: string; currentUser: any }) {
+  const [activeCategory, setActiveCategory] = useState<'referralSources' | 'serviceCoordinators' | 'insurancePlans'>('referralSources');
+  const [lists, setLists] = useState<any>({
+    referralSources: [],
+    serviceCoordinators: [],
+    insurancePlans: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [newItem, setNewItem] = useState('');
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState('');
+
+  const isAdmin = (currentUser?.role || 'ADMIN').toUpperCase() === 'ADMIN';
+
+  const loadLists = async () => {
+    try {
+      const data = await api.getDropdownLists(token);
+      setLists(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadLists(); }, [token]);
+
+  const handleAddItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItem.trim() || !isAdmin) return;
+    const currentItems = [...(lists[activeCategory] || [])];
+    if (currentItems.includes(newItem.trim())) return alert('Item already exists in list.');
+    currentItems.unshift(newItem.trim());
+    try {
+      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      setLists(updated);
+      setNewItem('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to update dropdown list');
+    }
+  };
+
+  const handleDeleteItem = async (index: number) => {
+    if (!isAdmin || !confirm('Are you sure you want to remove this option?')) return;
+    const currentItems = [...(lists[activeCategory] || [])];
+    currentItems.splice(index, 1);
+    try {
+      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      setLists(updated);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleSaveEdit = async (index: number) => {
+    if (!editValue.trim() || !isAdmin) return;
+    const currentItems = [...(lists[activeCategory] || [])];
+    currentItems[index] = editValue.trim();
+    try {
+      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      setLists(updated);
+      setEditingIdx(null);
+      setEditValue('');
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const categoryLabels = {
+    referralSources: 'Referral Sources (87 Extracted Options)',
+    serviceCoordinators: 'Service Coordinators (21 Agencies)',
+    insurancePlans: 'Insurance Plans & Payers (30 Options)'
+  };
+
+  const currentList: string[] = lists[activeCategory] || [];
+
+  return (
+    <div className="card" style={{ maxWidth: 800, padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Dropdown List Manager</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '4px 0 0 0' }}>
+            {isAdmin ? 'Manage options for Referral Sources, Service Coordinators, and Insurance Plans.' : 'Read-only view (Admin permissions required to modify options).'}
+          </p>
+        </div>
+      </div>
+
+      {/* Category Tabs */}
+      <div className="tabs" style={{ marginBottom: 20 }}>
+        <button
+          className={`tab ${activeCategory === 'referralSources' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('referralSources'); setEditingIdx(null); }}
+        >
+          Referral Sources ({lists.referralSources?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'serviceCoordinators' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('serviceCoordinators'); setEditingIdx(null); }}
+        >
+          Service Coordinators ({lists.serviceCoordinators?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'insurancePlans' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('insurancePlans'); setEditingIdx(null); }}
+        >
+          Insurance Plans ({lists.insurancePlans?.length || 0})
+        </button>
+      </div>
+
+      {/* Add New Item Form */}
+      {isAdmin && (
+        <form onSubmit={handleAddItem} style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder={`Add new ${activeCategory === 'referralSources' ? 'Referral Source' : activeCategory === 'serviceCoordinators' ? 'Service Coordinator Agency' : 'Insurance Plan'}...`}
+            value={newItem}
+            onChange={e => setNewItem(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!newItem.trim()}>
+            <Plus size={14} /> Add Option
+          </button>
+        </form>
+      )}
+
+      {/* Options List */}
+      <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+        {loading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>Loading lists...</div>
+        ) : currentList.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>No options defined yet</div>
+        ) : (
+          currentList.map((item, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '10px 16px',
+                borderBottom: idx < currentList.length - 1 ? '1px solid var(--border)' : 'none',
+                background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+              }}
+            >
+              {editingIdx === idx ? (
+                <div style={{ display: 'flex', gap: 8, flex: 1, marginRight: 12 }}>
+                  <input
+                    type="text"
+                    className="form-input form-input-sm"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    style={{ flex: 1 }}
+                    autoFocus
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={() => handleSaveEdit(idx)}>Save</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setEditingIdx(null)}>Cancel</button>
+                </div>
+              ) : (
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{item}</span>
+              )}
+
+              {isAdmin && editingIdx !== idx && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '2px 8px', fontSize: 11 }}
+                    onClick={() => { setEditingIdx(idx); setEditValue(item); }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '2px 8px', fontSize: 11, color: 'var(--accent-red)' }}
+                    onClick={() => handleDeleteItem(idx)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Settings({ token, user }: { token: string; user: any }) {
   const [tab, setTab] = useState('users');
   const userRole = (user?.role || 'ADMIN').toUpperCase();
   const isAdminOrManager = ['ADMIN', 'MANAGER'].includes(userRole);
+  const isAdmin = userRole === 'ADMIN';
 
   return (
     <div>
@@ -321,6 +620,11 @@ export default function Settings({ token, user }: { token: string; user: any }) 
         <button className={`tab ${tab === 'processes' ? 'active' : ''}`} onClick={() => setTab('processes')}>
           <Shield size={14} /> Processes
         </button>
+        {isAdmin && (
+          <button className={`tab ${tab === 'dropdowns' ? 'active' : ''}`} onClick={() => setTab('dropdowns')}>
+            <Edit3 size={14} /> Dropdown Lists
+          </button>
+        )}
         {isAdminOrManager && (
           <button className={`tab ${tab === 'risk' ? 'active' : ''}`} onClick={() => setTab('risk')}>
             <TrendingUp size={14} /> Risk Weights
@@ -328,8 +632,9 @@ export default function Settings({ token, user }: { token: string; user: any }) 
         )}
       </div>
 
-      {tab === 'users' && <UserManagement token={token} />}
+      {tab === 'users' && <UserManagement token={token} currentUser={user} />}
       {tab === 'processes' && <ProcessTemplates token={token} />}
+      {tab === 'dropdowns' && isAdmin && <DropdownManagement token={token} currentUser={user} />}
       {tab === 'risk' && isAdminOrManager && <RiskWeightsManagement token={token} />}
     </div>
   );

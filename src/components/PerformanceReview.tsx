@@ -30,8 +30,10 @@ export default function PerformanceReview({ token, onSelectLead }: { token: stri
     },
     bucket2: {
       tracks: rawData?.bucket2?.tracks ?? [
-        { key: 'hha', name: 'HHA / PCA', active: 8, closed: 4, soc: 3, winRate: 75.0, velocity: { m1: 2, m2: 1, m3: 0, m4_plus: 0 } },
-        { key: 'cdpap', name: 'CDPAP', active: 5, closed: 2, soc: 2, winRate: 100.0, velocity: { m1: 2, m2: 0, m3: 0, m4_plus: 0 } }
+        { key: 'transfer', name: 'Transfer LTC, VA, CHHA', active: 14, closed: 4, soc: 4, winRate: 80.0, velocity: { m1: 4, m2: 0, m3: 0, m4_plus: 0 } },
+        { key: 'standard_ltc', name: 'Standard LTC, PACE, HMO', active: 38, closed: 6, soc: 5, winRate: 65.0, velocity: { m1: 3, m2: 2, m3: 0, m4_plus: 0 } },
+        { key: 'waiver', name: 'Waivers (NHTD/TBI)', active: 9, closed: 1, soc: 1, winRate: 70.0, velocity: { m1: 0, m2: 1, m3: 0, m4_plus: 0 } },
+        { key: 'medicaid_needed', name: 'Medicaid Needed', active: 12, closed: 5, soc: 4, winRate: 60.0, velocity: { m1: 2, m2: 2, m3: 0, m4_plus: 0 } }
       ]
     },
     bucket3: {
@@ -98,12 +100,12 @@ export default function PerformanceReview({ token, onSelectLead }: { token: stri
               <h3 style={{ fontWeight: 600, margin: 0, fontSize: 16 }}>Bucket 3: Medicaid Approvals</h3>
               <CheckCircle size={18} color="var(--accent-green)" />
             </div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 4 }}>Percentage of Medicaid leads converted or qualified</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 4 }}>Medicaid CIN issuance &amp; eligibility confirmation</p>
           </div>
           <div>
             <div style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>{data.bucket3.rate.toFixed(1)}%</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              {data.bucket3.approved} approved / {data.bucket3.total} total Medicaid leads
+              Approved Applications: <strong>{data.bucket3.approved} / {data.bucket3.total}</strong>
             </div>
             <div style={{ marginTop: 16, height: 6, borderRadius: 3, backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${Math.min(data.bucket3.rate, 100)}%`, backgroundColor: 'var(--accent-green)' }}></div>
@@ -115,169 +117,78 @@ export default function PerformanceReview({ token, onSelectLead }: { token: stri
         <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <h3 style={{ fontWeight: 600, margin: 0, fontSize: 16 }}>Bucket 5: Starts Volume</h3>
-              <AlertCircle size={18} color={data.bucket5.penaltyApplied ? 'var(--accent-red)' : 'var(--accent-green)'} />
+              <h3 style={{ fontWeight: 600, margin: 0, fontSize: 16 }}>Bucket 5: Current Starts</h3>
+              <FileText size={18} color="var(--accent-purple)" />
             </div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 4 }}>Monthly Target: 30+ Starts of Care (SOC)</p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, marginTop: 4 }}>Active Start of Care (SOC) deployments this month</p>
           </div>
           <div>
-            <div style={{ fontSize: 32, fontWeight: 700, marginBottom: 4, color: data.bucket5.penaltyApplied ? 'var(--accent-red)' : 'var(--accent-green)' }}>
-              {data.bucket5.currentMonthStarts}
-            </div>
+            <div style={{ fontSize: 32, fontWeight: 700, marginBottom: 4 }}>{data.bucket5.currentMonthStarts}</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              {data.bucket5.penaltyApplied ? '⚠️ 0.75x Multiplier Applied (<30)' : '✅ Targets met!'}
+              SOC Volume: <strong>{data.bucket5.penaltyApplied ? 'Penalty Active (Low Conversion)' : 'Healthy Progression'}</strong>
             </div>
             <div style={{ marginTop: 16, height: 6, borderRadius: 3, backgroundColor: 'var(--border-color)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${Math.min((data.bucket5.currentMonthStarts / 30) * 100, 100)}%`, backgroundColor: data.bucket5.penaltyApplied ? 'var(--accent-red)' : 'var(--accent-green)' }}></div>
+              <div style={{ height: '100%', width: '100%', backgroundColor: 'var(--accent-purple)' }}></div>
             </div>
           </div>
         </motion.div>
-
       </div>
 
-      {/* BUCKET 2: COHORT PERFORMANCE BY SERVICE TRACK */}
-      <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-          <div>
-            <h3 className="section-title" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Bucket 2: Cohort Velocity &amp; Conversion by Service Track</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Days from intake start to Start of Care (SOC)</p>
-          </div>
-          <TrendingUp size={20} color="var(--text-muted)" />
-        </div>
-
-        <div className="table-responsive">
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '2px solid var(--border-color)' }}>
-                <th style={{ padding: 12 }}>Service Track</th>
-                <th style={{ padding: 12 }}>Active Leads</th>
-                <th style={{ padding: 12 }}>Closed Cases</th>
-                <th style={{ padding: 12 }}>Conversions (SOC)</th>
-                <th style={{ padding: 12 }}>Win Rate</th>
-                <th style={{ padding: 12 }}>Month 1 (&le;30d)</th>
-                <th style={{ padding: 12 }}>Month 2 (31-60d)</th>
-                <th style={{ padding: 12 }}>Month 3 (61-90d)</th>
-                <th style={{ padding: 12 }}>Month 4+ (91d+)</th>
+      {/* BUCKET 2: PROCESS BOARDS VELOCITY TABLE */}
+      <div className="card" style={{ marginBottom: 32 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, marginTop: 0 }}>Bucket 2: Process Board Conversion &amp; Velocity</h3>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Process Track</th>
+              <th>Active Cases</th>
+              <th>Closed Won</th>
+              <th>SOC Starts</th>
+              <th>Win Rate</th>
+              <th>Velocity (M1 / M2 / M3)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.bucket2.tracks.map((t: any) => (
+              <tr key={t.key}>
+                <td style={{ fontWeight: 600 }}>{t.name}</td>
+                <td>{t.active}</td>
+                <td>{t.closed}</td>
+                <td style={{ color: 'var(--accent-green)', fontWeight: 600 }}>{t.soc}</td>
+                <td><span className="status-badge status-qualified">{t.winRate.toFixed(1)}%</span></td>
+                <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                  M1: {t.velocity.m1} · M2: {t.velocity.m2} · M3+: {t.velocity.m3 + t.velocity.m4_plus}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {data.bucket2.tracks.map((track: any) => (
-                <tr key={track.key} style={{ borderBottom: '1px solid var(--border-color)', height: 48 }}>
-                  <td style={{ padding: 12, fontWeight: 600 }}>{track.name}</td>
-                  <td style={{ padding: 12 }}>{track.active}</td>
-                  <td style={{ padding: 12 }}>{track.closed}</td>
-                  <td style={{ padding: 12, color: 'var(--accent-green)', fontWeight: 600 }}>{track.soc}</td>
-                  <td style={{ padding: 12, fontWeight: 700 }}>{track.winRate.toFixed(1)}%</td>
-                  <td style={{ padding: 12 }}>{track.velocity.m1}</td>
-                  <td style={{ padding: 12 }}>{track.velocity.m2}</td>
-                  <td style={{ padding: 12 }}>{track.velocity.m3}</td>
-                  <td style={{ padding: 12 }}>{track.velocity.m4_plus}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
-
-      {/* LOWER GRIDS: UNQUALIFIED AUDIT & DEMOGRAPHIC HEALTH CHECK */}
-      <div className="grid-2">
-
-        {/* DATA INTEGRITY / DEMOGRAPHIC HEALTH AUDITOR */}
-        <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <h3 className="section-title" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Data Integrity Monitor</h3>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Demographic compliance checklist (Strict Zero-Dummy rules)</p>
-            </div>
-            <Database size={20} color={data.dataIntegrity.incompleteCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)'} />
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, padding: 12, borderRadius: 6, backgroundColor: data.dataIntegrity.incompleteCount > 0 ? 'rgba(239, 68, 68, 0.05)' : 'rgba(16, 185, 129, 0.05)', border: data.dataIntegrity.incompleteCount > 0 ? '1px solid rgba(239, 68, 68, 0.15)' : '1px solid rgba(16, 185, 129, 0.15)' }}>
-            <ShieldAlert size={20} color={data.dataIntegrity.incompleteCount > 0 ? 'var(--accent-red)' : 'var(--accent-green)'} style={{ flexShrink: 0, marginTop: 2 }} />
-            <div style={{ fontSize: 13 }}>
-              {data.dataIntegrity.incompleteCount > 0 ? (
-                <span>Found <strong>{data.dataIntegrity.incompleteCount}</strong> active leads missing critical fields. Clean up records instead of inserting placeholders.</span>
-              ) : (
-                <span style={{ color: 'var(--accent-green)', fontWeight: 600 }}>Perfect compliance! All active leads have fully populated demographics.</span>
-              )}
-            </div>
-          </div>
-
-          <div className="table-responsive" style={{ maxHeight: 300, overflowY: 'auto' }}>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ padding: 8 }}>Name</th>
-                  <th style={{ padding: 8 }}>Owner</th>
-                  <th style={{ padding: 8 }}>Missing Fields</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.dataIntegrity.leads.map((l: any) => (
-                  <tr key={l.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: 13 }}>
-                    <td style={{ padding: 8 }}>
-                      <button className="hover-underline" onClick={() => onSelectLead(l.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
-                        {l.firstName} {l.lastName}
-                      </button>
-                    </td>
-                    <td style={{ padding: 8, color: 'var(--text-muted)' }}>{l.ownerName}</td>
-                    <td style={{ padding: 8 }}>
-                      {l.missingFields.map((f: string) => (
-                        <span key={f} style={{ display: 'inline-block', backgroundColor: 'rgba(239, 68, 68, 0.08)', color: 'var(--accent-red)', padding: '2px 6px', borderRadius: 4, fontSize: 11, marginRight: 4, marginBottom: 4, fontWeight: 500 }}>
-                          {f}
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
-                ))}
-                {data.dataIntegrity.leads.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>No incomplete leads found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-
-        {/* BUCKET 4: UNQUALIFIED AUDIT */}
-        <motion.div className="card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <h3 className="section-title" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Bucket 4: Unqualified Audit</h3>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>Recent lost leads check for coordinator accountability</p>
-            </div>
-            <FileText size={20} color="var(--text-muted)" />
-          </div>
-
-          <div className="table-responsive" style={{ maxHeight: 360, overflowY: 'auto' }}>
-            <table className="table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border-color)' }}>
-                  <th style={{ padding: 8 }}>Lead Name</th>
-                  <th style={{ padding: 8 }}>Source</th>
-                  <th style={{ padding: 8 }}>Lost Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.bucket4.leads.map((l: any) => (
-                  <tr key={l.id} style={{ borderBottom: '1px solid var(--border-color)', height: 44, fontSize: 13 }}>
-                    <td style={{ padding: 8 }}>
-                      <button className="hover-underline" onClick={() => onSelectLead(l.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-primary)', fontWeight: 500 }}>
-                        {l.firstName} {l.lastName}
-                      </button>
-                    </td>
-                    <td style={{ padding: 8, color: 'var(--text-muted)' }}>{l.source}</td>
-                    <td style={{ padding: 8, fontWeight: 500, color: 'var(--accent-red)' }}>{l.lostReason || 'Unspecified'}</td>
-                  </tr>
-                ))}
-                {data.bucket4.leads.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>No unqualified leads found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* DATA INTEGRITY & SLA AUDIT */}
+      {data.dataIntegrity.incompleteCount > 0 && (
+        <div className="card" style={{ borderLeft: '4px solid var(--accent-red)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <ShieldAlert size={20} color="var(--accent-red)" />
+            <h3 style={{ margin: 0, fontSize: 16 }}>Demographic &amp; SLA Compliance Audit</h3>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+            The following cases are missing required demographic or SLA checkback fields:
+          </p>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {data.dataIntegrity.leads.map((l: any) => (
+              <button
+                key={l.id}
+                className="btn btn-secondary btn-sm"
+                onClick={() => onSelectLead(l.id)}
+                style={{ borderColor: 'rgba(239, 68, 68, 0.3)', color: 'var(--accent-red)' }}
+              >
+                <AlertCircle size={14} /> {l.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,116 +1,90 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import {
+  LayoutDashboard, GitBranch, Users, CheckSquare,
+  TrendingUp, Settings as SettingsIcon, LogOut
+} from 'lucide-react';
+import LoginScreen from '@/components/LoginScreen';
 import Dashboard from '@/components/Dashboard';
 import Pipeline from '@/components/Pipeline';
 import LeadList from '@/components/LeadList';
 import LeadDetail from '@/components/LeadDetail';
 import Tasks from '@/components/Tasks';
-import Settings from '@/components/Settings';
-import LoginScreen from '@/components/LoginScreen';
 import PerformanceReview from '@/components/PerformanceReview';
-import {
-  LayoutDashboard, GitBranch, Users, CheckSquare, Settings as SettingsIcon, LogOut, TrendingUp
-} from 'lucide-react';
-
-interface User {
-  id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  name?: string;
-  role: string;
-  department?: string;
-}
+import Settings from '@/components/Settings';
+import { api } from '@/lib/api';
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string>('');
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [view, setView] = useState<string>('dashboard');
   const [viewFilter, setViewFilter] = useState<string>('');
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
-  // Restore authentication & page navigation state from localStorage & URL Hash on mount
   useEffect(() => {
     try {
       const savedToken = localStorage.getItem('intake_crm_token');
-      const savedUser = localStorage.getItem('intake_crm_user');
+      const savedUserStr = localStorage.getItem('intake_crm_user');
       const savedView = localStorage.getItem('intake_crm_view');
       const savedLeadId = localStorage.getItem('intake_crm_lead_id');
 
-      if (savedToken && savedUser) {
+      if (savedToken && savedUserStr) {
         setToken(savedToken);
-        setUser(JSON.parse(savedUser));
+        const parsedUser = JSON.parse(savedUserStr);
+        setUser(parsedUser);
 
-        // Restore view from URL hash or localStorage
-        const rawHash = window.location.hash.replace('#', '');
-        if (rawHash.startsWith('lead/')) {
-          const leadId = rawHash.split('/')[1] || savedLeadId;
-          if (leadId && leadId !== 'undefined' && leadId !== 'null') {
-            setSelectedLeadId(leadId);
-            setView('lead-detail');
-          } else {
-            setView('leads');
-            window.location.hash = 'leads';
+        api.me(savedToken).then(res => {
+          if (res?.user) {
+            setUser(res.user);
+            localStorage.setItem('intake_crm_user', JSON.stringify(res.user));
           }
-        } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(rawHash)) {
-          setView(rawHash);
-        } else if (savedView) {
-          if (savedView === 'lead-detail' && savedLeadId && savedLeadId !== 'undefined' && savedLeadId !== 'null') {
-            setSelectedLeadId(savedLeadId);
-            setView('lead-detail');
-          } else if (['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(savedView)) {
-            setView(savedView);
-          } else {
-            setView('dashboard');
-          }
-        }
+        }).catch(() => {});
       }
-    } catch (err) {
-      console.error('[Session Restore Error]', err);
+
+      const hash = window.location.hash.replace('#', '');
+      if (hash.startsWith('lead/')) {
+        const leadId = hash.replace('lead/', '');
+        if (leadId && leadId !== 'undefined' && leadId !== 'null') {
+          setSelectedLeadId(leadId);
+          setView('lead-detail');
+        } else {
+          setView('leads');
+        }
+      } else if (hash && ['dashboard', 'pipeline', 'leads', 'tasks', 'performance', 'settings'].includes(hash)) {
+        setView(hash);
+      } else if (savedView && savedView !== 'lead-detail') {
+        setView(savedView);
+      } else if (savedView === 'lead-detail' && savedLeadId && savedLeadId !== 'undefined' && savedLeadId !== 'null') {
+        setSelectedLeadId(savedLeadId);
+        setView('lead-detail');
+      }
+    } catch (e) {
+      console.error(e);
     } finally {
       setInitialized(true);
     }
   }, []);
 
-  // Automated hourly RingCentral call log, SMS, and AI transcript background sync
-  useEffect(() => {
-    if (!token) return;
-    api.syncRingCentral(token);
-    const interval = setInterval(() => {
-      api.syncRingCentral(token);
-    }, 3600000); // Hourly sync interval
-    return () => clearInterval(interval);
-  }, [token]);
-
-  const handleLogin = (u: User, t: string) => {
-    const firstName = u.firstName || (u.name ? u.name.split(' ')[0] : 'Admin');
-    const lastName = u.lastName || (u.name ? u.name.split(' ')[1] || 'User' : 'User');
-    const normalizedUser = {
-      ...u,
-      firstName,
-      lastName,
-      role: u.role || 'ADMIN'
-    };
-    setUser(normalizedUser);
+  const handleLogin = (t: string, u: any) => {
     setToken(t);
-
+    setUser(u);
+    setView('dashboard');
     try {
       localStorage.setItem('intake_crm_token', t);
-      localStorage.setItem('intake_crm_user', JSON.stringify(normalizedUser));
+      localStorage.setItem('intake_crm_user', JSON.stringify(u));
+      localStorage.setItem('intake_crm_view', 'dashboard');
+      window.location.hash = 'dashboard';
     } catch {}
   };
 
-  const handleLogout = async () => {
-    try { await api.logout(token); } catch {}
+  const handleLogout = () => {
+    if (token) api.logout(token).catch(console.error);
+    setToken(null);
     setUser(null);
-    setToken('');
     setView('dashboard');
-    setViewFilter('');
     setSelectedLeadId(null);
-
     try {
       localStorage.removeItem('intake_crm_token');
       localStorage.removeItem('intake_crm_user');
@@ -201,19 +175,19 @@ export default function Home() {
       </aside>
 
       <main className="main-content">
-        {view === 'dashboard' && <Dashboard token={token} user={user} onSelectLead={handleSelectLead} onNavigate={handleNavigate} />}
-        {view === 'pipeline' && <Pipeline token={token} onSelectLead={handleSelectLead} />}
-        {view === 'leads' && <LeadList token={token} initialFilter={viewFilter} onSelectLead={handleSelectLead} />}
+        {view === 'dashboard' && <Dashboard token={token!} user={user} onSelectLead={handleSelectLead} onNavigate={handleNavigate} />}
+        {view === 'pipeline' && <Pipeline token={token!} onSelectLead={handleSelectLead} />}
+        {view === 'leads' && <LeadList token={token!} initialFilter={viewFilter} onSelectLead={handleSelectLead} />}
         {view === 'lead-detail' && (
           selectedLeadId && selectedLeadId !== 'undefined' && selectedLeadId !== 'null' ? (
-            <LeadDetail token={token} leadId={selectedLeadId} onBack={() => handleNavigate('leads')} user={user} />
+            <LeadDetail token={token!} leadId={selectedLeadId} onBack={() => handleNavigate('leads')} user={user} />
           ) : (
-            <LeadList token={token} initialFilter="" onSelectLead={handleSelectLead} />
+            <LeadList token={token!} initialFilter="" onSelectLead={handleSelectLead} />
           )
         )}
-        {view === 'tasks' && <Tasks token={token} userId={user.id} onSelectLead={handleSelectLead} />}
-        {view === 'performance' && <PerformanceReview token={token} onSelectLead={handleSelectLead} />}
-        {view === 'settings' && <Settings token={token} user={user} />}
+        {view === 'tasks' && <Tasks token={token!} userId={user.id} user={user} onSelectLead={handleSelectLead} />}
+        {view === 'performance' && <PerformanceReview token={token!} onSelectLead={handleSelectLead} />}
+        {view === 'settings' && <Settings token={token!} user={user} />}
       </main>
     </div>
   );

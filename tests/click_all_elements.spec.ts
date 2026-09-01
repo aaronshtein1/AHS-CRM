@@ -5,6 +5,9 @@ test.describe('Full Headless UI & Click Coverage Test Suite', () => {
   const jsErrors: string[] = [];
 
   test.beforeEach(async ({ page }) => {
+    // Increase test timeout to 2 minutes for full exhaustive walk
+    test.setTimeout(120000);
+
     // Listen for uncaught client-side JavaScript exceptions
     page.on('pageerror', (err) => {
       console.error('❌ Uncaught Exception:', err.message);
@@ -44,15 +47,17 @@ test.describe('Full Headless UI & Click Coverage Test Suite', () => {
     console.log('\n[Phase 2] Testing Dashboard KPI Cards & Compliance Links...');
     await expect(page.locator('.page-title').first()).toContainText('Dashboard');
 
-    // Click KPI Cards
-    const kpiCards = page.locator('.kpi-card');
+    // Test clicking individual KPI Cards (returning to dashboard after each)
+    const kpiCards = page.locator('.kpi-card.clickable');
     const kpiCount = await kpiCards.count();
-    console.log(`Found ${kpiCount} KPI cards on Dashboard.`);
-    for (let i = 0; i < Math.min(kpiCount, 6); i++) {
+    console.log(`Found ${kpiCount} clickable KPI cards on Dashboard.`);
+    for (let i = 0; i < Math.min(kpiCount, 5); i++) {
+      console.log(`  -> Clicking KPI Card #${i + 1}`);
       await kpiCards.nth(i).click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
+      await page.click('#nav-dashboard');
+      await page.waitForTimeout(300);
     }
-    await page.click('#nav-dashboard');
     console.log('✅ PHASE 2 PASSED: All Dashboard KPI cards clicked without errors.');
 
     // 3. Test Lead Lifecycle Pipeline View

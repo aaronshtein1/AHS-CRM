@@ -3,50 +3,40 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Phone, Mail, MapPin, Building2, MessageSquare, ArrowRightCircle,
-  RefreshCw, ChevronRight, CheckCircle2, Circle, Clock, Plus,
-  Edit3, Save, X, PlayCircle, Shield, HeartPulse, FileText, Activity,
-  Trophy, XCircle, AlertTriangle
+  User, Shield, Stethoscope, GitPullRequest, CheckSquare, Clock,
+  ArrowRightCircle, CheckCircle2, Circle, AlertTriangle, Plus,
+  MessageSquare, RefreshCw, PlayCircle, XCircle
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import ICD10SearchInput from './ICD10SearchInput';
 
 const LOST_REASONS = [
-  'No longer interested',
-  'Chose a different agency',
-  'Moved out of service area',
-  'Medicaid ineligible',
-  'Insurance does not cover services',
-  'Hospitalized / entering facility',
-  'Deceased',
-  'Family decided against services',
-  'Unable to reach after multiple attempts',
-  'Financially ineligible (private pay declined)',
-  'Duplicate / entered in error',
-  'Other',
+  'Patient Non-Responsive',
+  'Ineligible for Medicaid/MLTC',
+  'Selected Competitor Agency',
+  'Moved Out of Service Area',
+  'Patient Deceased',
+  'Family Declined Services',
+  'Other'
 ];
 
-
-const VALID_TRANSITIONS: Record<string, string[]> = {
-  NEW: ['ATTEMPTING_CONTACT', 'CONTACTED', 'UNQUALIFIED'],
-  ATTEMPTING_CONTACT: ['CONTACTED', 'UNQUALIFIED'],
-  CONTACTED: ['QUALIFIED', 'UNQUALIFIED'],
-  QUALIFIED: ['ACTIVE_PATIENT', 'UNQUALIFIED'],
-  ACTIVE_PATIENT: ['ON_HOLD', 'DISCHARGED'],
-  ON_HOLD: ['ACTIVE_PATIENT', 'DISCHARGED'],
-  DISCHARGED: ['ACTIVE_PATIENT'],
-  UNQUALIFIED: ['NEW'],
-};
-
-function EditableField({ label, value, field, onSave, options }: {
-  label: string; value: string | number | null | undefined; field: string;
+function EditableField({
+  label, value, field, onSave, type = 'text', options
+}: {
+  label: string;
+  value?: string;
+  field: string;
   onSave: (field: string, value: string) => void;
-  options?: {value: string, label: string}[];
+  type?: string;
+  options?: { value: string; label: string }[];
 }) {
   const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(String(value ?? ''));
+  const [val, setVal] = useState(value || '');
+
+  useEffect(() => { setVal(value || ''); }, [value]);
 
   const handleSave = () => {
-    onSave(field, editValue);
+    onSave(field, val);
     setEditing(false);
   };
 
@@ -54,29 +44,31 @@ function EditableField({ label, value, field, onSave, options }: {
     return (
       <div className="editable-field editing">
         <span className="editable-label">{label}</span>
-        <div style={{ display: 'flex', gap: 6, flex: 1 }}>
-          {options ? (
-            <select className="form-select form-input-sm" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()}>
-              <option value="">Select...</option>
-              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          ) : (
-            <input className="form-input form-input-sm" value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && handleSave()} />
-          )}
-          <button className="btn-icon" onClick={handleSave}><Save size={14} /></button>
-          <button className="btn-icon" onClick={() => setEditing(false)}><X size={14} /></button>
-        </div>
+        {options ? (
+          <select className="form-select form-input-sm" value={val} onChange={e => setVal(e.target.value)}>
+            <option value="">— Select —</option>
+            {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <input
+            type={type}
+            className="form-input form-input-sm"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            autoFocus
+          />
+        )}
+        <button className="btn-icon" onClick={handleSave} title="Save"><CheckCircle2 size={16} color="var(--accent-green)" /></button>
+        <button className="btn-icon" onClick={() => setEditing(false)} title="Cancel"><XCircle size={16} color="var(--accent-red)" /></button>
       </div>
     );
   }
 
   return (
-    <div className="editable-field" onClick={() => { setEditValue(String(value ?? '')); setEditing(true); }}>
+    <div className="editable-field" onClick={() => setEditing(true)}>
       <span className="editable-label">{label}</span>
-      <span className="editable-value">
-        {options ? (options.find(o => o.value === String(value))?.label || value || '—') : (value || '—')} 
-        <Edit3 size={12} className="edit-icon" />
-      </span>
+      <span className="editable-value">{value || <em style={{ color: 'var(--text-muted)' }}>Not set</em>}</span>
     </div>
   );
 }
@@ -84,49 +76,44 @@ function EditableField({ label, value, field, onSave, options }: {
 function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: string; onRefresh: () => void }) {
   const [advancing, setAdvancing] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
-  const [closingOutcome, setClosingOutcome] = useState<'WON' | 'LOST' | null>(null);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [outcome, setOutcome] = useState<'WON' | 'LOST'>('WON');
   const [lostReason, setLostReason] = useState('');
   const [customReason, setCustomReason] = useState('');
-  const [showDateModal, setShowDateModal] = useState(false);
-  const [dateValues, setDateValues] = useState<Record<string, string>>({});
-  const [dateTarget, setDateTarget] = useState<'advance' | 'close-won' | 'close-lost' | null>(null);
-  const [, setTick] = useState(0);
 
-  useEffect(() => {
-    // Re-render every minute to keep countdown clock fresh
-    const interval = setInterval(() => setTick(t => t + 1), 60000);
-    return () => clearInterval(interval);
-  }, []);
+  const activeStage = instance.stageInstances?.find((s: any) => s.status === 'ACTIVE');
+  const isClosed = instance.status === 'CLOSED';
 
-  const activeStage = instance.stageInstances.find((si: any) => si.status === 'ACTIVE');
-  const isOnFinalStage = activeStage?.stageTemplate?.isFinalStage === true;
-
-  // Find the next stage and its collectDates definition
-  const nextStage = !isOnFinalStage
-    ? instance.stageInstances.find((si: any) => si.stageTemplate.order === (activeStage?.stageTemplate?.order || 0) + 1)
-    : null;
-  const nextCollectDates: any[] = (() => {
-    try { return JSON.parse(nextStage?.stageTemplate?.collectDates || '[]'); } catch { return []; }
-  })();
-  const currentCollectDates: any[] = (() => {
-    try { return JSON.parse(activeStage?.stageTemplate?.collectDates || '[]'); } catch { return []; }
-  })();
+  // Determine if the NEXT stage requires a date prompt
+  const getNextStageInfo = () => {
+    const activeIdx = instance.stageInstances?.findIndex((s: any) => s.status === 'ACTIVE') ?? -1;
+    if (activeIdx === -1 || activeIdx + 1 >= (instance.stageInstances?.length || 0)) return null;
+    const nextStage = instance.stageInstances[activeIdx + 1];
+    const tpl = nextStage?.stageTemplate || {};
+    return {
+      requiresDate: tpl.requiresDate || false,
+      dateLabel: tpl.dateLabel || 'Scheduled Date',
+      name: tpl.name || `Stage ${activeIdx + 2}`
+    };
+  };
 
   const handleAdvanceClick = () => {
-    if (nextCollectDates.length > 0) {
-      // Show date collection modal before advancing
-      setDateValues({});
-      setDateTarget('advance');
+    const nextInfo = getNextStageInfo();
+    if (nextInfo && nextInfo.requiresDate) {
+      setScheduledDate('');
       setShowDateModal(true);
     } else {
-      doAdvance({});
+      doAdvance();
     }
   };
 
-  const doAdvance = async (collectedDates: Record<string, string>) => {
+  const doAdvance = async (dateValue?: string) => {
     setAdvancing(true);
     try {
-      await api.advanceProcess(token, instance.id, { collectedDates });
+      const advanceData: any = {};
+      if (dateValue) advanceData.scheduledDate = dateValue;
+      await api.advanceProcess(token, instance.id, advanceData);
       setShowDateModal(false);
       onRefresh();
     } catch (err) {
@@ -136,40 +123,16 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
     }
   };
 
-  const handleCloseClick = (outcome: 'WON' | 'LOST') => {
-    setClosingOutcome(outcome);
-    setLostReason('');
-    setCustomReason('');
-    if (currentCollectDates.length > 0) {
-      setDateValues({});
-      setDateTarget(outcome === 'WON' ? 'close-won' : 'close-lost');
-      setShowDateModal(true);
-    } else {
-      setShowCloseModal(true);
-    }
-  };
-
-  const handleDateModalConfirm = () => {
-    if (dateTarget === 'advance') {
-      doAdvance(dateValues);
-    } else {
-      // Dates collected, now show the close modal
-      setShowDateModal(false);
-      setShowCloseModal(true);
-    }
+  const handleDateSubmit = () => {
+    if (!scheduledDate) return;
+    doAdvance(scheduledDate);
   };
 
   const handleClose = async () => {
-    if (!closingOutcome) return;
-    const reason = lostReason === 'Other' ? customReason : lostReason;
-    if (closingOutcome === 'LOST' && !reason) return;
     setAdvancing(true);
     try {
-      await api.closeProcess(token, instance.id, {
-        outcome: closingOutcome,
-        lostReason: closingOutcome === 'LOST' ? reason : undefined,
-        collectedDates: dateValues,
-      });
+      const finalReason = lostReason === 'Other' ? customReason : lostReason;
+      await api.closeProcess(token, instance.id, { outcome, lostReason: finalReason });
       setShowCloseModal(false);
       onRefresh();
     } catch (err) {
@@ -179,98 +142,72 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
     }
   };
 
-  // For the date modal — determine which dates to collect
-  const datesToCollect = dateTarget === 'advance' ? nextCollectDates : currentCollectDates;
-  const requiredDatesFilled = datesToCollect
-    .filter((d: any) => d.required)
-    .every((d: any) => dateValues[d.key]);
-
   return (
-    <div className="process-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+    <div className="card" style={{ marginBottom: 16, background: 'var(--surface-raised)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h4 style={{ margin: 0, fontWeight: 700 }}>{instance.processTemplate.name}</h4>
-          <span className={`status-badge status-${instance.status.toLowerCase()}`}>{instance.status}</span>
-          {instance.outcome && (
-            <span style={{ marginLeft: 8, fontWeight: 600, color: instance.outcome === 'WON' ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-              {instance.outcome === 'WON' ? '✅ Won' : '❌ Lost'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h4 style={{ margin: 0, fontSize: 16 }}>{instance.processTemplate?.name}</h4>
+            <span className={`status-badge ${isClosed ? (instance.outcome === 'WON' ? 'status-qualified' : 'status-unqualified') : 'status-contacted'}`}>
+              {isClosed ? `Closed ${instance.outcome}` : 'Active'}
             </span>
+          </div>
+          {instance.processTemplate?.description && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '4px 0 0 0' }}>{instance.processTemplate.description}</p>
           )}
         </div>
-        {instance.status === 'ACTIVE' && (
+        {!isClosed && (
           <div style={{ display: 'flex', gap: 8 }}>
-            {isOnFinalStage ? (
-              <>
-                <button
-                  className="btn btn-sm"
-                  style={{ background: 'var(--accent-green)', color: '#fff', border: 'none' }}
-                  onClick={() => handleCloseClick('WON')}
-                >
-                  <Trophy size={14} /> Close Won
-                </button>
-                <button
-                  className="btn btn-sm"
-                  style={{ background: 'var(--accent-red)', color: '#fff', border: 'none' }}
-                  onClick={() => handleCloseClick('LOST')}
-                >
-                  <XCircle size={14} /> Close Lost
-                </button>
-              </>
-            ) : (
-              <button className="btn btn-primary btn-sm" onClick={handleAdvanceClick} disabled={advancing}>
-                <ChevronRight size={14} /> {advancing ? 'Advancing...' : 'Advance Stage'}
-              </button>
-            )}
+            <button className="btn btn-primary btn-sm" onClick={handleAdvanceClick} disabled={advancing}>
+              <ArrowRightCircle size={14} /> {advancing ? 'Advancing...' : 'Advance Stage'}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setOutcome('WON'); setShowCloseModal(true); }}>
+              Close Won
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setOutcome('LOST'); setShowCloseModal(true); }}>
+              Close Lost
+            </button>
           </div>
         )}
       </div>
 
+      {/* Stepper Visualization */}
       <div className="stepper">
-        {instance.stageInstances.map((si: any, idx: number) => {
-          const isCurrent = si.status === 'ACTIVE';
-          const isCompleted = si.status === 'COMPLETED';
-
-          let timeLabel = null;
-          let timeColor = 'var(--text-muted)';
-          
-          if (si.dueAt) {
-            const due = new Date(si.dueAt);
-            const now = new Date();
-            if (isCompleted) {
-               const completed = si.completedAt ? new Date(si.completedAt) : now;
-               if (completed > due) {
-                 timeLabel = '🟠 Completed Late';
-                 timeColor = 'var(--accent-amber)';
-               } else {
-                 timeLabel = '✅ Completed On Time';
-                 timeColor = 'var(--accent-green)';
-               }
-            } else if (isCurrent) {
-               const diffMs = due.getTime() - now.getTime();
-               const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-               const hours = Math.floor((Math.abs(diffMs) % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-               
-               if (diffMs < 0) {
-                 timeLabel = `🔴 Late (Due: ${due.toLocaleDateString()})`;
-                 timeColor = 'var(--accent-red)';
-               } else {
-                 const timeStr = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-                 timeLabel = `⏳ ${timeStr}`;
-                 timeColor = 'var(--accent-blue)';
-               }
-            }
-          }
+        {(instance.stageInstances || []).map((si: any, idx: number) => {
+          const isDone = si.status === 'COMPLETED';
+          const isActive = si.status === 'ACTIVE';
+          const isOverdue = si.dueAt && new Date(si.dueAt) < new Date() && !isDone;
+          const isRRDC = si.stageTemplate?.name?.includes('RRDC') || si.stageTemplate?.name?.includes('RRDS');
+          const hasDateFlag = si.stageTemplate?.requiresDate;
 
           return (
-            <div key={si.id} className={`stepper-step ${isCurrent ? 'current' : ''} ${isCompleted ? 'completed' : ''}`}>
-              <div className="stepper-indicator">
-                {isCompleted ? <CheckCircle2 size={18} /> : isCurrent ? <PlayCircle size={18} /> : <Circle size={14} />}
+            <div key={si.id} className={`stepper-step ${isDone ? 'completed' : ''} ${isActive ? 'active' : ''}`}>
+              <div className="stepper-indicator" style={{
+                backgroundColor: isDone ? 'var(--accent-green)' : isActive ? (isOverdue ? 'var(--accent-red)' : 'var(--accent-blue)') : 'var(--surface)',
+                color: isDone || isActive ? '#fff' : 'var(--text-muted)',
+                borderColor: isOverdue ? 'var(--accent-red)' : undefined
+              }}>
+                {isDone ? <CheckCircle2 size={16} /> : idx + 1}
               </div>
-              <div style={{ flex: 1 }}>
-                <div className="stepper-label">{si.stageTemplate.name}</div>
-                {timeLabel && (
-                  <div style={{ fontSize: 11, color: timeColor, marginTop: 4, fontWeight: 500 }}>
-                    {timeLabel}
+              <div className="stepper-label">
+                <div style={{ fontWeight: isActive ? 700 : 500 }}>
+                  {si.stageTemplate?.name}
+                  {isRRDC && <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 4px', borderRadius: 4, background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700 }}>RRDC 5d SLA</span>}
+                  {hasDateFlag && !isDone && <span style={{ marginLeft: 6, fontSize: 10, padding: '2px 4px', borderRadius: 4, background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontWeight: 700 }}>📅 Date Required</span>}
+                </div>
+                {isActive && si.scheduledDate && (
+                  <div style={{ fontSize: 11, color: 'var(--accent-blue)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    📅 Scheduled: {si.scheduledDate}
+                  </div>
+                )}
+                {isActive && si.dueAt && (
+                  <div style={{ fontSize: 11, color: isOverdue ? 'var(--accent-red)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Clock size={11} /> {isOverdue ? 'Overdue: ' : 'Due: '} {new Date(si.dueAt).toLocaleDateString()}
+                  </div>
+                )}
+                {isDone && si.completedAt && (
+                  <div style={{ fontSize: 11, color: 'var(--accent-green)', marginTop: 2 }}>
+                    ✓ Completed {new Date(si.completedAt).toLocaleDateString()}
                   </div>
                 )}
               </div>
@@ -279,63 +216,65 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
         })}
       </div>
 
-      {/* Date Collection Modal */}
+      {/* Assessment Date Collection Modal */}
       <AnimatePresence>
-        {showDateModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-            }}
-            onClick={() => setShowDateModal(false)}
-          >
+        {showDateModal && (() => {
+          const nextInfo = getNextStageInfo();
+          return (
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 12, padding: 28, maxWidth: 460, width: '90%'
+                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
               }}
-              onClick={e => e.stopPropagation()}
+              onClick={() => setShowDateModal(false)}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <Clock size={22} color="var(--accent-blue)" />
-                <h3 style={{ margin: 0 }}>Schedule Key Dates</h3>
-              </div>
-              <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
-                Enter the scheduled dates for the next stage. Tasks will be auto-created from these dates.
-              </p>
-              {datesToCollect.map((dateDef: any) => (
-                <div key={dateDef.key} style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {dateDef.label} {dateDef.required && <span style={{ color: 'var(--accent-red)' }}>*</span>}
-                  </label>
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                style={{
+                  background: 'var(--surface)', border: '1px solid var(--border)',
+                  borderRadius: 12, padding: 24, maxWidth: 440, width: '90%'
+                }}
+                onClick={e => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <span style={{ fontSize: 24 }}>📅</span>
+                  <h3 style={{ margin: 0 }}>Schedule {nextInfo?.dateLabel || 'Assessment Date'}</h3>
+                </div>
+                <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+                  The next stage <strong>&quot;{nextInfo?.name}&quot;</strong> requires a scheduled date.
+                  A <strong>prep task</strong> (1 day before) and a <strong>day-of reminder</strong> will be generated automatically.
+                </p>
+                <div className="form-group">
+                  <label className="form-label">{nextInfo?.dateLabel || 'Scheduled Date'} *</label>
                   <input
                     type="date"
                     className="form-input"
-                    value={dateValues[dateDef.key] || ''}
-                    onChange={e => setDateValues(prev => ({ ...prev, [dateDef.key]: e.target.value }))}
-                    style={{ width: '100%' }}
+                    value={scheduledDate}
+                    onChange={e => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    required
+                    autoFocus
                   />
                 </div>
-              ))}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-                <button className="btn btn-secondary btn-sm" onClick={() => setShowDateModal(false)}>Cancel</button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={handleDateModalConfirm}
-                  disabled={!requiredDatesFilled || advancing}
-                >
-                  {advancing ? 'Processing...' : dateTarget === 'advance' ? 'Confirm & Advance' : 'Continue'}
-                </button>
-              </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setShowDateModal(false)}>Cancel</button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleDateSubmit}
+                    disabled={!scheduledDate || advancing}
+                  >
+                    {advancing ? 'Advancing...' : `Confirm & Advance Stage`}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Close Modal */}
@@ -357,26 +296,17 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
               exit={{ scale: 0.95, opacity: 0 }}
               style={{
                 background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 12, padding: 28, maxWidth: 420, width: '90%'
+                borderRadius: 12, padding: 24, maxWidth: 420, width: '90%'
               }}
               onClick={e => e.stopPropagation()}
             >
-              {closingOutcome === 'WON' ? (
+              {outcome === 'WON' ? (
                 <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                    <Trophy size={22} color="var(--accent-green)" />
-                    <h3 style={{ margin: 0 }}>Close as Won</h3>
-                  </div>
-                  <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>
-                    Mark this process as successfully closed. The lead will be updated accordingly.
-                  </p>
+                  <h3 style={{ margin: '0 0 12px 0' }}>Close Process as Won</h3>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>Confirm that all intake requirements are satisfied and caregiver Start of Care (SOC) is scheduled.</p>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => setShowCloseModal(false)}>Cancel</button>
-                    <button
-                      className="btn btn-sm"
-                      style={{ background: 'var(--accent-green)', color: '#fff', border: 'none' }}
-                      onClick={handleClose} disabled={advancing}
-                    >
+                    <button className="btn btn-primary btn-sm" onClick={handleClose} disabled={advancing}>
                       {advancing ? 'Closing...' : 'Confirm — Close Won'}
                     </button>
                   </div>
@@ -385,9 +315,9 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                     <AlertTriangle size={22} color="var(--accent-amber)" />
-                    <h3 style={{ margin: 0 }}>Close as Lost</h3>
+                    <h3 style={{ margin: 0 }}>Close Process as Lost</h3>
                   </div>
-                  <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Select the reason this lead did not convert:</p>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Select the reason this process was discontinued:</p>
                   <select
                     className="form-input"
                     value={lostReason}
@@ -427,7 +357,6 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
   );
 }
 
-
 function TaskCard({ task, token, onRefresh }: { task: any; token: string; onRefresh: () => void }) {
   const handleComplete = async () => {
     try {
@@ -448,10 +377,10 @@ function TaskCard({ task, token, onRefresh }: { task: any; token: string; onRefr
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, textDecoration: task.status === 'COMPLETED' ? 'line-through' : 'none' }}>{task.title}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
             <span className={`priority-badge priority-${task.priority.toLowerCase()}`}>{task.priority}</span>
             {task.dueAt && <span className={isOverdue ? 'text-red' : ''}><Clock size={11} /> {new Date(task.dueAt).toLocaleDateString()}</span>}
-            {task.assignedTo && <span>{task.assignedTo.firstName} {task.assignedTo.lastName}</span>}
+            {task.assignedTo && <span>Assigned to {task.assignedTo.firstName} {task.assignedTo.lastName}</span>}
           </div>
         </div>
       </div>
@@ -468,16 +397,28 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<any[]>([]);
   const [showStartProcess, setShowStartProcess] = useState(false);
+  const [showStartDateModal, setShowStartDateModal] = useState(false);
+  const [startProcessDate, setStartProcessDate] = useState('');
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState('');
   const [customLostReason, setCustomLostReason] = useState('');
   const [blockerType, setBlockerType] = useState('');
   const [blockerNotes, setBlockerNotes] = useState('');
 
+  const [dropdownLists, setDropdownLists] = useState<any>({
+    referralSources: [],
+    serviceCoordinators: [],
+    insurancePlans: [],
+    serviceTypes: []
+  });
+
   const loadLead = useCallback(async () => {
     try {
       const data = await api.getLead(token, leadId);
       setLead(data);
+      const dl = await api.getDropdownLists(token);
+      setDropdownLists(dl);
     } catch (err) {
       console.error(err);
     } finally {
@@ -498,62 +439,52 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
   };
 
   const handleStatusChange = async (newStatus: string) => {
-    if (!lead) return;
-    // Intercept UNQUALIFIED — require lost reason first
-    if (newStatus === 'UNQUALIFIED') {
-      setPendingStatus('UNQUALIFIED');
-      setLostReason('');
-      setCustomLostReason('');
-      return;
-    }
-    // Intercept ON_HOLD — require blocker first
     if (newStatus === 'ON_HOLD') {
       setPendingStatus('ON_HOLD');
-      setBlockerType('');
-      setBlockerNotes('');
+      return;
+    }
+    if (newStatus === 'UNQUALIFIED' || newStatus === 'DISCHARGED') {
+      setPendingStatus(newStatus);
       return;
     }
     try {
       await api.updateLead(token, lead.id, { status: newStatus });
       loadLead();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleConfirmUnqualified = async () => {
-    if (!lead) return;
-    const reason = lostReason === 'Other' ? customLostReason : lostReason;
-    if (!reason) return;
-    try {
-      await api.updateLead(token, lead.id, { status: 'UNQUALIFIED', lostReason: reason });
-      setPendingStatus(null);
-      setLostReason('');
-      setCustomLostReason('');
-      loadLead();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      console.error(err);
     }
   };
 
   const handleConfirmOnHold = async () => {
-    if (!lead || !blockerType) return;
+    if (!blockerType) return;
     try {
-      await api.updateLead(token, lead.id, { status: 'ON_HOLD', blockerType, blockerNotes });
+      await api.updateLead(token, lead.id, {
+        status: 'ON_HOLD',
+        blockerType,
+        blockerNotes: blockerNotes || null
+      });
       setPendingStatus(null);
       setBlockerType('');
       setBlockerNotes('');
       loadLead();
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      console.error(err);
     }
   };
 
-  const handleAddComment = async () => {
-    if (!comment.trim() || !lead) return;
+  const handleConfirmUnqualified = async () => {
+    const finalReason = lostReason === 'Other' ? customLostReason : lostReason;
+    if (!finalReason) return;
     try {
-      await api.createUpdate(token, { leadId: lead.id, content: comment });
-      setComment('');
+      await api.updateLead(token, lead.id, {
+        status: pendingStatus || 'UNQUALIFIED',
+        lostReason: finalReason,
+        blockerType: 'UNQUALIFIED_DEAD_END',
+        blockerNotes: `Marked ${pendingStatus || 'UNQUALIFIED'}: ${finalReason}`
+      });
+      setPendingStatus(null);
+      setLostReason('');
+      setCustomLostReason('');
       loadLead();
     } catch (err) {
       console.error(err);
@@ -561,9 +492,32 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
   };
 
   const handleStartProcess = async (templateId: string) => {
+    // Check if stage 1 of this template requires a date
+    const template = templates.find((t: any) => t.id === templateId);
+    const stage1 = template?.stages?.[0];
+    if (stage1?.requiresDate) {
+      setPendingTemplateId(templateId);
+      setStartProcessDate('');
+      setShowStartProcess(false);
+      setShowStartDateModal(true);
+      return;
+    }
     try {
       await api.startProcess(token, { leadId: lead.id, processTemplateId: templateId });
       setShowStartProcess(false);
+      loadLead();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleStartProcessWithDate = async () => {
+    if (!pendingTemplateId || !startProcessDate) return;
+    try {
+      await api.startProcess(token, { leadId: lead.id, processTemplateId: pendingTemplateId, scheduledDate: startProcessDate });
+      setShowStartDateModal(false);
+      setPendingTemplateId(null);
+      setStartProcessDate('');
       loadLead();
     } catch (err) {
       console.error(err);
@@ -581,24 +535,37 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
     }
   };
 
-  if (loading) return <div className="empty-state"><RefreshCw className="animate-spin" /><p>Loading...</p></div>;
-  if (!lead) return <div className="empty-state"><p>Lead not found</p></div>;
+  const handleAddComment = async () => {
+    if (!comment.trim()) return;
+    try {
+      await api.createUpdate(token, { leadId: lead.id, content: comment });
+      setComment('');
+      loadLead();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-  const allowedTransitions = VALID_TRANSITIONS[lead.status] || [];
+  if (loading) return <div className="empty-state" style={{ display: 'flex', justifyContent: 'center', padding: 64 }}><RefreshCw className="animate-spin" /></div>;
+  if (!lead) return <div className="empty-state"><p>Lead not found</p><button onClick={onBack} className="btn btn-secondary btn-sm">Back</button></div>;
+
+  const allowedTransitions = ['ATTEMPTING_CONTACT', 'CONTACTED', 'QUALIFIED', 'ACTIVE_PATIENT', 'ON_HOLD', 'UNQUALIFIED']
+    .filter(s => s !== lead.status);
+
   const tabs = [
-    { id: 'contact', label: 'Contact', icon: Phone },
+    { id: 'contact', label: 'Contact', icon: User },
     { id: 'insurance', label: 'Insurance', icon: Shield },
-    { id: 'medical', label: 'Medical', icon: HeartPulse },
-    { id: 'processes', label: 'Processes', icon: Activity },
-    { id: 'tasks', label: 'Tasks', icon: FileText },
-    { id: 'timeline', label: 'Timeline', icon: MessageSquare },
+    { id: 'medical', label: 'Medical', icon: Stethoscope },
+    { id: 'processes', label: 'Processes', icon: GitPullRequest },
+    { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+    { id: 'timeline', label: 'Timeline', icon: Clock }
   ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      {/* Unqualified / Lost Reason Modal */}
+      {/* Unqualified Modal */}
       <AnimatePresence>
-        {pendingStatus === 'UNQUALIFIED' && (
+        {(pendingStatus === 'UNQUALIFIED' || pendingStatus === 'DISCHARGED') && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -620,32 +587,32 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
               onClick={e => e.stopPropagation()}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                <AlertTriangle size={22} color="var(--accent-amber)" />
-                <h3 style={{ margin: 0 }}>Mark as Unqualified</h3>
+                <AlertTriangle size={22} color="var(--accent-red)" />
+                <h3 style={{ margin: 0 }}>Mark Lead as {pendingStatus}</h3>
               </div>
-              <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>
-                Please select the reason this lead did not qualify:
+              <p style={{ color: 'var(--text-muted)', marginBottom: 12, fontSize: 13 }}>
+                Specify the primary reason why this lead is being marked as {pendingStatus.toLowerCase()}:
               </p>
               <select
-                className="form-input"
+                className="form-select form-input"
                 value={lostReason}
                 onChange={e => setLostReason(e.target.value)}
-                style={{ marginBottom: 12 }}
-                id="lost-reason-select"
+                style={{ width: '100%', marginBottom: 12 }}
+                id="unqualified-reason-select"
               >
-                <option value="">— Select a reason —</option>
+                <option value="">— Select Reason —</option>
                 {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
               {lostReason === 'Other' && (
                 <input
                   className="form-input"
-                  placeholder="Describe the reason..."
+                  placeholder="Describe reason..."
                   value={customLostReason}
                   onChange={e => setCustomLostReason(e.target.value)}
-                  style={{ marginBottom: 12 }}
+                  style={{ width: '100%', marginBottom: 16 }}
                 />
               )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
                 <button className="btn btn-secondary btn-sm" onClick={() => setPendingStatus(null)}>Cancel</button>
                 <button
                   className="btn btn-sm"
@@ -800,87 +767,156 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
         ))}
       </div>
 
-      {activeTab === 'contact' && (
-        <div className="grid-2">
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Contact Information</h3>
-            <EditableField label="Phone" value={lead.phone} field="phone" onSave={handleFieldSave} />
-            <EditableField label="Secondary Phone" value={lead.phoneSecondary} field="phoneSecondary" onSave={handleFieldSave} />
-            <EditableField label="Email" value={lead.email} field="email" onSave={handleFieldSave} />
-            <EditableField label="Preferred Language" value={lead.preferredLanguage} field="preferredLanguage" onSave={handleFieldSave} />
-          </div>
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Address</h3>
-            <EditableField label="Street" value={lead.addressStreet} field="addressStreet" onSave={handleFieldSave} />
-            <EditableField label="City" value={lead.addressCity} field="addressCity" onSave={handleFieldSave} />
-            <EditableField label="State" value={lead.addressState} field="addressState" onSave={handleFieldSave} />
-            <EditableField label="ZIP" value={lead.addressZip} field="addressZip" onSave={handleFieldSave} />
-            <EditableField 
-              label="County" 
-              value={lead.county} 
-              field="county" 
-              onSave={handleFieldSave}
-              options={['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 'Chautauqua', 'Chemung', 'Chenango', 'Clinton', 'Columbia', 'Cortland', 'Delaware', 'Dutchess', 'Erie', 'Essex', 'Franklin', 'Fulton', 'Genesee', 'Greene', 'Hamilton', 'Herkimer', 'Jefferson', 'Kings', 'Lewis', 'Livingston', 'Madison', 'Monroe', 'Montgomery', 'Nassau', 'New York', 'Niagara', 'Oneida', 'Onondaga', 'Ontario', 'Orange', 'Orleans', 'Oswego', 'Otsego', 'Putnam', 'Queens', 'Rensselaer', 'Richmond', 'Rockland', 'Saratoga', 'Schenectady', 'Schoharie', 'Schuyler', 'Seneca', 'Steuben', 'Suffolk', 'Sullivan', 'Tioga', 'Tompkins', 'Ulster', 'Warren', 'Washington', 'Wayne', 'Westchester', 'Wyoming', 'Yates'].map(c => ({value: c.toUpperCase(), label: c}))}
-            />
-          </div>
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Demographics</h3>
-            <EditableField label="Date of Birth" value={lead.dateOfBirth} field="dateOfBirth" onSave={handleFieldSave} />
-            <EditableField label="Gender" value={lead.gender} field="gender" onSave={handleFieldSave} />
-          </div>
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Intake Info</h3>
-            <EditableField label="Source" value={lead.source?.replace(/_/g, ' ')} field="source" onSave={handleFieldSave} />
-            <EditableField 
-              label="Service Type" 
-              value={lead.serviceType} 
-              field="serviceType" 
-              onSave={handleFieldSave}
-              options={[
-                {value: 'HHA/PCA', label: 'HHA / PCA'},
-                {value: 'NHTD', label: 'NHTD'},
-                {value: 'TBI', label: 'TBI'},
-                {value: 'CHHA', label: 'CHHA'},
-                {value: 'OTHER', label: 'Other'}
-              ]}
-            />
-            <div className="editable-field">
-              <span className="editable-label">Call Attempts</span>
-              <span className="editable-value">{lead.totalCallAttempts}</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {(() => {
+        const isWaiver = ['NHTD', 'TBI', 'NHTD & TBI'].includes(lead.serviceType);
+        const sourceOptions = (dropdownLists.referralSources || []).map((s: string) => ({ value: s, label: s }));
+        const scOptions = (dropdownLists.serviceCoordinators || []).map((sc: string) => ({ value: sc, label: sc }));
+        const planOptions = (dropdownLists.insurancePlans || []).map((p: string) => ({ value: p, label: p }));
 
-      {activeTab === 'insurance' && (
-        <div className="grid-2">
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Insurance Details</h3>
-            <EditableField label="Payer Type" value={lead.payerType?.replace(/_/g, ' ')} field="payerType" onSave={handleFieldSave} />
-            <EditableField label="Medicaid #" value={lead.medicaidNumber} field="medicaidNumber" onSave={handleFieldSave} />
-            <EditableField label="Medicare #" value={lead.medicareNumber} field="medicareNumber" onSave={handleFieldSave} />
-            <EditableField label="Insurance Company" value={lead.insuranceCompany} field="insuranceCompany" onSave={handleFieldSave} />
-          </div>
-        </div>
-      )}
+        return (
+          <>
+            {activeTab === 'contact' && (
+              <div className="grid-2">
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Contact Information</h3>
+                  <EditableField label="Phone" value={lead.phone} field="phone" onSave={handleFieldSave} />
+                  <EditableField label="Secondary Phone" value={lead.phoneSecondary} field="phoneSecondary" onSave={handleFieldSave} />
+                  <EditableField label="Email" value={lead.email} field="email" onSave={handleFieldSave} />
+                  <EditableField label="Preferred Language" value={lead.preferredLanguage} field="preferredLanguage" onSave={handleFieldSave} />
+                </div>
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Address</h3>
+                  <EditableField label="Street" value={lead.addressStreet} field="addressStreet" onSave={handleFieldSave} />
+                  <EditableField label="City" value={lead.addressCity} field="addressCity" onSave={handleFieldSave} />
+                  <EditableField label="State" value={lead.addressState} field="addressState" onSave={handleFieldSave} />
+                  <EditableField label="ZIP" value={lead.addressZip} field="addressZip" onSave={handleFieldSave} />
+                  <EditableField 
+                    label="County" 
+                    value={lead.county} 
+                    field="county" 
+                    onSave={handleFieldSave}
+                    options={['Albany', 'Allegany', 'Bronx', 'Broome', 'Cattaraugus', 'Cayuga', 'Chautauqua', 'Chemung', 'Chenango', 'Clinton', 'Columbia', 'Cortland', 'Delaware', 'Dutchess', 'Erie', 'Essex', 'Franklin', 'Fulton', 'Genesee', 'Greene', 'Hamilton', 'Herkimer', 'Jefferson', 'Kings', 'Lewis', 'Livingston', 'Madison', 'Monroe', 'Montgomery', 'Nassau', 'New York', 'Niagara', 'Oneida', 'Onondaga', 'Ontario', 'Orange', 'Orleans', 'Oswego', 'Otsego', 'Putnam', 'Queens', 'Rensselaer', 'Richmond', 'Rockland', 'Saratoga', 'Schenectady', 'Schoharie', 'Schuyler', 'Seneca', 'Steuben', 'Suffolk', 'Sullivan', 'Tioga', 'Tompkins', 'Ulster', 'Warren', 'Washington', 'Wayne', 'Westchester', 'Wyoming', 'Yates'].map(c => ({value: c.toUpperCase(), label: c}))}
+                  />
+                </div>
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Demographics</h3>
+                  <EditableField label="Date of Birth" value={lead.dateOfBirth} field="dateOfBirth" onSave={handleFieldSave} />
+                  <EditableField label="Gender" value={lead.gender} field="gender" onSave={handleFieldSave} />
+                </div>
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Intake Info</h3>
+                  <EditableField 
+                    label="Referral Source" 
+                    value={lead.source} 
+                    field="source" 
+                    onSave={handleFieldSave}
+                    options={sourceOptions.length > 0 ? sourceOptions : undefined}
+                  />
+                  <EditableField 
+                    label="Service Type" 
+                    value={lead.serviceType} 
+                    field="serviceType" 
+                    onSave={handleFieldSave}
+                    options={[
+                      {value: 'HHA/PCA', label: 'HHA / PCA'},
+                      {value: 'NHTD', label: 'NHTD Waiver'},
+                      {value: 'TBI', label: 'TBI Waiver'},
+                      {value: 'NHTD & TBI', label: 'NHTD & TBI Waiver'},
+                      {value: 'CHHA', label: 'CHHA'},
+                      {value: 'OTHER', label: 'Other'}
+                    ]}
+                  />
+                  {/* Secondary Service Coordinator Dropdown for NHTD / TBI */}
+                  {isWaiver && (
+                    <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', marginBottom: 4 }}>
+                        WAIVER PROGRAM DETAILED INTAKE
+                      </div>
+                      <EditableField 
+                        label="Service Coordinator Agency" 
+                        value={lead.serviceCoordinator} 
+                        field="serviceCoordinator" 
+                        onSave={handleFieldSave}
+                        options={scOptions}
+                      />
+                    </div>
+                  )}
+                  <div className="editable-field" style={{ marginTop: 8 }}>
+                    <span className="editable-label">Call Attempts</span>
+                    <span className="editable-value">{lead.totalCallAttempts}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
-      {activeTab === 'medical' && (
-        <div className="grid-2">
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Medical Information</h3>
-            <EditableField label="Diagnosis" value={lead.diagnosis} field="diagnosis" onSave={handleFieldSave} />
-            <EditableField label="Service Type" value={lead.serviceType} field="serviceType" onSave={handleFieldSave} />
-            <EditableField label="Hours/Week" value={lead.currentHoursPerWeek} field="currentHoursPerWeek" onSave={handleFieldSave} />
-            <EditableField label="SOC Date" value={lead.socDate} field="socDate" onSave={handleFieldSave} />
-            <EditableField label="Caregiver Name" value={lead.caregiverName} field="caregiverName" onSave={handleFieldSave} />
-          </div>
-          <div className="card">
-            <h3 className="section-title" style={{ marginBottom: 16 }}>Notes</h3>
-            <EditableField label="Notes" value={lead.notes} field="notes" onSave={handleFieldSave} />
-            <EditableField label="Comments" value={lead.comments} field="comments" onSave={handleFieldSave} />
-          </div>
-        </div>
-      )}
+            {activeTab === 'insurance' && (
+              <div className="grid-2">
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Insurance Details</h3>
+                  {isWaiver ? (
+                    <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-blue)', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
+                        <span>🔒</span> Medicaid (Fee-for-Service) Required
+                      </div>
+                      <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: 0 }}>
+                        Waiver programs (NHTD / TBI) strictly require Fee-for-Service Medicaid. Payer type has been locked automatically.
+                      </p>
+                      <div style={{ marginTop: 12 }}>
+                        <div className="editable-field">
+                          <span className="editable-label">Payer Type</span>
+                          <span className="editable-value" style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Medicaid (Fee-for-Service)</span>
+                        </div>
+                        <div className="editable-field">
+                          <span className="editable-label">Insurance Company</span>
+                          <span className="editable-value" style={{ fontWeight: 700, color: 'var(--accent-blue)' }}>Medicaid (Fee-for-Service)</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <EditableField 
+                        label="Payer Type" 
+                        value={lead.payerType} 
+                        field="payerType" 
+                        onSave={handleFieldSave} 
+                        options={planOptions}
+                      />
+                      <EditableField 
+                        label="Insurance Company" 
+                        value={lead.insuranceCompany} 
+                        field="insuranceCompany" 
+                        onSave={handleFieldSave} 
+                        options={planOptions}
+                      />
+                    </>
+                  )}
+                  <EditableField label="Medicaid CIN #" value={lead.medicaidNumber} field="medicaidNumber" onSave={handleFieldSave} />
+                  <EditableField label="Medicare #" value={lead.medicareNumber} field="medicareNumber" onSave={handleFieldSave} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'medical' && (
+              <div className="grid-2">
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Medical &amp; Assessment Information</h3>
+                  <ICD10SearchInput value={lead.diagnosis} onSave={handleFieldSave} />
+                  <EditableField label="Community Health Assessment (CHA / UAS-NY) Date" value={lead.assessmentDate} field="assessmentDate" type="date" onSave={handleFieldSave} />
+                  <EditableField label="Physician Medical Order (M11q) Date" value={lead.m11qDate} field="m11qDate" type="date" onSave={handleFieldSave} />
+                  <EditableField label="SOC Date" value={lead.socDate} field="socDate" type="date" onSave={handleFieldSave} />
+                  <EditableField label="Caregiver Name" value={lead.caregiverName} field="caregiverName" onSave={handleFieldSave} />
+                  <EditableField label="Hours/Week" value={lead.currentHoursPerWeek} field="currentHoursPerWeek" onSave={handleFieldSave} />
+                </div>
+                <div className="card">
+                  <h3 className="section-title" style={{ marginBottom: 16 }}>Notes</h3>
+                  <EditableField label="Notes" value={lead.notes} field="notes" onSave={handleFieldSave} />
+                  <EditableField label="Comments" value={lead.comments} field="comments" onSave={handleFieldSave} />
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {activeTab === 'processes' && (
         <div className="card">
@@ -897,7 +933,7 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
 
           {showStartProcess && (
             <div className="card" style={{ background: 'var(--surface-raised)', marginBottom: 16, padding: 16 }}>
-              <h4 style={{ margin: '0 0 12px 0' }}>Select a template:</h4>
+              <h4 style={{ margin: '0 0 12px 0' }}>Select a process template:</h4>
               {templates.map((t: any) => (
                 <button key={t.id} className="btn btn-secondary btn-sm" style={{ marginRight: 8, marginBottom: 8 }} onClick={() => handleStartProcess(t.id)}>
                   <PlayCircle size={14} /> {t.name}
@@ -906,6 +942,72 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
               <button className="btn btn-secondary btn-sm" onClick={() => setShowStartProcess(false)}>Cancel</button>
             </div>
           )}
+
+          {/* Start Process Date Collection Modal */}
+          <AnimatePresence>
+            {showStartDateModal && (() => {
+              const template = templates.find((t: any) => t.id === pendingTemplateId);
+              const stage1 = template?.stages?.[0];
+              const dateLabel = stage1?.dateLabel || 'Assessment Date';
+              const stageName = stage1?.name || 'Stage 1';
+              return (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+                  }}
+                  onClick={() => setShowStartDateModal(false)}
+                >
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    style={{
+                      background: 'var(--surface)', border: '1px solid var(--border)',
+                      borderRadius: 12, padding: 24, maxWidth: 440, width: '90%'
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                      <span style={{ fontSize: 24 }}>📅</span>
+                      <h3 style={{ margin: 0 }}>Schedule {dateLabel}</h3>
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: 8, fontSize: 13 }}>
+                      Starting <strong>&quot;{template?.name}&quot;</strong> — Stage 1: <strong>&quot;{stageName}&quot;</strong>
+                    </p>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>
+                      This stage requires a scheduled date. A <strong>prep task</strong> (1 day before) and a <strong>day-of reminder</strong> will be generated automatically.
+                    </p>
+                    <div className="form-group">
+                      <label className="form-label">{dateLabel} *</label>
+                      <input
+                        type="date"
+                        className="form-input"
+                        value={startProcessDate}
+                        onChange={e => setStartProcessDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                        required
+                        autoFocus
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => { setShowStartDateModal(false); setPendingTemplateId(null); }}>Cancel</button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={handleStartProcessWithDate}
+                        disabled={!startProcessDate}
+                      >
+                        Confirm &amp; Start Process
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
 
           {(lead.processInstances || []).length === 0 && !showStartProcess && (
             <div className="empty-state"><p>No processes started yet</p></div>

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { api } from '@/lib/api';
 
-export default function LoginScreen({ onLogin }: { onLogin: (user: any, token: string) => void }) {
+export default function LoginScreen({ onLogin }: { onLogin: (token: string, user: any) => void }) {
   const [email, setEmail] = useState('admin@intakecrm.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
@@ -16,7 +16,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: any, token: s
     setError('');
     try {
       const data = await api.login(email, password);
-      onLogin(data.user, data.token);
+      onLogin(data.token, data.user);
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
