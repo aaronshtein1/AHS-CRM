@@ -7534,6 +7534,90 @@ function handleMockFallback(path: string, options: RequestInit) {
 
 
 // Intelligent Tasking & Risk Calculation Engine
+
+export interface DropdownLists {
+  referralSources: string[];
+  serviceCoordinators: string[];
+  blockerTypes: string[];
+  counties: string[];
+  serviceTypes: string[];
+  payerTypes: string[];
+  lossReasons: string[];
+}
+
+export const defaultDropdowns: DropdownLists = {
+  referralSources: [
+    'NHTD Service Coordinator',
+    'HCSS Agency Transfer',
+    'Hospital Discharge',
+    'Community Referral',
+    'Social Worker',
+    'Self / Family Referral',
+    'Physician Office'
+  ],
+  serviceCoordinators: [
+    'A&T Healthcare',
+    'VNHC',
+    'My Independence',
+    'Upstate Advocacy',
+    'Unlimited Care, Inc.',
+    'Fort Hudson',
+    'Kigi Services',
+    'Prompt',
+    'Epilepsy Center',
+    'Living Resources',
+    'Empire Community Services'
+  ],
+  blockerTypes: [
+    'Aide / Staffing Matching',
+    'RRDC Approval Pending',
+    'UAS & Home Abstract Outstanding',
+    'Provider Selection / Signature Missing',
+    'Service Coordination Paperwork In Progress/Missing',
+    'Insurance Inquiry / Medicaid Verification',
+    'Behavioral Safety Evaluation',
+    'NFLOC Score Mismatch'
+  ],
+  counties: [
+    'ALBANY',
+    'RENSSELAER',
+    'SCHENECTADY',
+    'WARREN',
+    'SARATOGA',
+    'GREENE',
+    'COLUMBIA',
+    'FRANKLIN',
+    'KINGS',
+    'QUEENS',
+    'BRONX',
+    'NEW YORK',
+    'JEFFERSON'
+  ],
+  serviceTypes: [
+    'NHTD & TBI',
+    'HHA/PCA',
+    'CDPAP',
+    'Traditional Home Care',
+    'Private Duty Nursing'
+  ],
+  payerTypes: [
+    'Medicaid (Fee-for-Service)',
+    'MLTC',
+    'Medicare',
+    'Private Pay',
+    'Commercial Insurance'
+  ],
+  lossReasons: [
+    'Patient Opted Out / Declined',
+    'Deceased',
+    'Moved Out of Service Area',
+    'Unresponsive / Unable to Contact',
+    'Ineligible for Waiver Services',
+    'Selected Other Provider'
+  ]
+};
+
+
 export function runIntelligentTaskingEngine(leads: LeadItem[]): { leads: LeadItem[]; tasks: any[] } {
   const allTasks: any[] = [...(mockState.tasks || [])];
 
@@ -7618,7 +7702,7 @@ export const api = {
   getRecentActivity: (token: string) =>
     apiFetch('/api/dashboard/recent-activity', { token }),
 
-  getLeads: async (token: string, params?: Record<string, string>) => {
+  getLeads: async (token: string, params?: Record<string, string>, currentUser?: any) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     const res = await apiFetch(`/api/leads${qs}`, { token }).catch(() => null);
     
@@ -7690,6 +7774,18 @@ export const api = {
     finalLeads = intel.leads;
     mockState.leads = finalLeads;
     saveLeadsToStorage();
+
+    // Marketer Role Access Control (RBAC): Filter records by assigned referral sources
+    const activeUser = currentUser || mockState.user;
+    if (activeUser && (activeUser.role || '').toUpperCase() === 'MARKETER') {
+      const allowedSources = Array.isArray(activeUser.assignedSources) ? activeUser.assignedSources : [];
+      finalLeads = finalLeads.filter((l: any) => {
+        const matchesSource = allowedSources.includes(l.referralSource) || allowedSources.includes(l.source) || allowedSources.includes(l.serviceCoordinator);
+        const isAssigned = l.assignedTo === activeUser.name || l.assignedTo === `${activeUser.firstName} ${activeUser.lastName}`;
+        const isCreator = l.createdBy?.email === activeUser.email;
+        return matchesSource || isAssigned || isCreator;
+      });
+    }
 
     if (params?.status) {
       finalLeads = finalLeads.filter((l: any) => l.status === params.status || l.stage === params.status);
@@ -7776,21 +7872,20 @@ export const api = {
     return newLead;
   },
 
-  getDropdownLists: async (token: string) => {
+  getDropdownLists: async (token: string): Promise<DropdownLists> => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('intake_crm_dropdowns');
-        if (saved) return JSON.parse(saved);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { ...defaultDropdowns, ...parsed };
+        }
       } catch {}
     }
-    return {
-      referralSources: [],
-      serviceCoordinators: [],
-      insurancePlans: []
-    };
+    return defaultDropdowns;
   },
 
-  updateDropdownLists: async (token: string, data: { referralSources?: string[]; serviceCoordinators?: string[]; insurancePlans?: string[] }) => {
+  updateDropdownLists: async (token: string, data: Partial<DropdownLists>) => {
     let current = await api.getDropdownLists(token);
     current = { ...current, ...data };
     if (typeof window !== 'undefined') {
@@ -7801,12 +7896,12 @@ export const api = {
     return current;
   },
 
-  updateDropdownList: async (token: string, category: string, items: string[]) => {
-    const key = category === 'referralSources' ? 'referralSources' : category === 'serviceCoordinators' ? 'serviceCoordinators' : 'insurancePlans';
-    return await api.updateDropdownLists(token, { [key]: items });
+  updateDropdownList: async (token: string, category: keyof DropdownLists, items: string[]) => {
+    return await api.updateDropdownLists(token, { [category]: items });
   },
 
-  updateLead: async (token: string, id: string, data: any) => {
+
+  updateLead: async (token: string, id: string, data: any, currentUser?: any) => {
     let idx = mockState.leads.findIndex(l => l.id === id);
     if (idx === -1) {
       const existing = defaultLeads.find(l => l.id === id);
@@ -7817,6 +7912,15 @@ export const api = {
     }
 
     if (idx !== -1) {
+      const userRole = ((currentUser || mockState.user)?.role || 'ADMIN').toUpperCase();
+      const isAdminOrManager = ['ADMIN', 'MANAGER'].includes(userRole);
+
+      // Restrict assignedTo / owner rep change to Managers & Admins only
+      if ((data.assignedTo !== undefined || data.owner !== undefined) && !isAdminOrManager) {
+        delete data.assignedTo;
+        delete data.owner;
+      }
+
       mockState.leads[idx] = { 
         ...mockState.leads[idx], 
         ...data, 
@@ -7834,7 +7938,7 @@ export const api = {
           type: 'STATUS_CHANGE',
           content: `${statusText}${reasonText}${blockerText}`.trim(),
           createdAt: new Date().toISOString(),
-          createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+          createdBy: { firstName: (currentUser || mockState.user).firstName, lastName: (currentUser || mockState.user).lastName },
           leadId: id
         });
       }

@@ -132,6 +132,7 @@ function UserManagement({ token, currentUser }: { token: string; currentUser: an
                   <option value="MANAGER">Manager</option>
                   <option value="INTAKE_SPECIALIST">Intake Specialist</option>
                   <option value="COORDINATOR">Coordinator</option>
+                <option value="MARKETER">Marketer (Source Restricted)</option>
                   <option value="REP">Rep</option>
                   <option value="MARKETER">Marketer</option>
                 </select>
@@ -175,6 +176,7 @@ function UserManagement({ token, currentUser }: { token: string; currentUser: an
                   <option value="MANAGER">Manager</option>
                   <option value="INTAKE_SPECIALIST">Intake Specialist</option>
                   <option value="COORDINATOR">Coordinator</option>
+                <option value="MARKETER">Marketer (Source Restricted)</option>
                   <option value="REP">Rep</option>
                   <option value="MARKETER">Marketer</option>
                 </select>
@@ -411,11 +413,15 @@ function RiskWeightsManagement({ token }: { token: string }) {
 }
 
 function DropdownManagement({ token, currentUser }: { token: string; currentUser: any }) {
-  const [activeCategory, setActiveCategory] = useState<'referralSources' | 'serviceCoordinators' | 'insurancePlans'>('referralSources');
+  const [activeCategory, setActiveCategory] = useState<string>('referralSources');
   const [lists, setLists] = useState<any>({
     referralSources: [],
     serviceCoordinators: [],
-    insurancePlans: []
+    blockerTypes: [],
+    counties: [],
+    serviceTypes: [],
+    payerTypes: [],
+    lossReasons: []
   });
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState('');
@@ -444,7 +450,7 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
     if (currentItems.includes(newItem.trim())) return alert('Item already exists in list.');
     currentItems.unshift(newItem.trim());
     try {
-      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      const updated = await api.updateDropdownList(token, activeCategory as any, currentItems);
       setLists(updated);
       setNewItem('');
     } catch (err: any) {
@@ -457,7 +463,7 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
     const currentItems = [...(lists[activeCategory] || [])];
     currentItems.splice(index, 1);
     try {
-      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      const updated = await api.updateDropdownList(token, activeCategory as any, currentItems);
       setLists(updated);
     } catch (err: any) {
       alert(err.message);
@@ -469,7 +475,7 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
     const currentItems = [...(lists[activeCategory] || [])];
     currentItems[index] = editValue.trim();
     try {
-      const updated = await api.updateDropdownList(token, activeCategory, currentItems);
+      const updated = await api.updateDropdownList(token, activeCategory as any, currentItems);
       setLists(updated);
       setEditingIdx(null);
       setEditValue('');
@@ -478,10 +484,14 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
     }
   };
 
-  const categoryLabels = {
-    referralSources: 'Referral Sources (87 Extracted Options)',
-    serviceCoordinators: 'Service Coordinators (21 Agencies)',
-    insurancePlans: 'Insurance Plans & Payers (30 Options)'
+  const categoryLabels: Record<string, string> = {
+    referralSources: 'Referral Sources',
+    serviceCoordinators: 'Service Coordinators',
+    blockerTypes: 'Blocker Types',
+    counties: 'Counties & Regions',
+    serviceTypes: 'Service Types',
+    payerTypes: 'Payer Types',
+    lossReasons: 'Loss Reasons'
   };
 
   const currentList: string[] = lists[activeCategory] || [];
@@ -492,13 +502,13 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
         <div>
           <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Dropdown List Manager</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '4px 0 0 0' }}>
-            {isAdmin ? 'Manage options for Referral Sources, Service Coordinators, and Insurance Plans.' : 'Read-only view (Admin permissions required to modify options).'}
+            {isAdmin ? 'Manage options across all 7 dropdown categories.' : 'Read-only view (Admin permissions required to modify options).'}
           </p>
         </div>
       </div>
 
       {/* Category Tabs */}
-      <div className="tabs" style={{ marginBottom: 20 }}>
+      <div className="tabs" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 6 }}>
         <button
           className={`tab ${activeCategory === 'referralSources' ? 'active' : ''}`}
           onClick={() => { setActiveCategory('referralSources'); setEditingIdx(null); }}
@@ -512,10 +522,34 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
           Service Coordinators ({lists.serviceCoordinators?.length || 0})
         </button>
         <button
-          className={`tab ${activeCategory === 'insurancePlans' ? 'active' : ''}`}
-          onClick={() => { setActiveCategory('insurancePlans'); setEditingIdx(null); }}
+          className={`tab ${activeCategory === 'blockerTypes' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('blockerTypes'); setEditingIdx(null); }}
         >
-          Insurance Plans ({lists.insurancePlans?.length || 0})
+          Blocker Types ({lists.blockerTypes?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'counties' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('counties'); setEditingIdx(null); }}
+        >
+          Counties ({lists.counties?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'serviceTypes' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('serviceTypes'); setEditingIdx(null); }}
+        >
+          Service Types ({lists.serviceTypes?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'payerTypes' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('payerTypes'); setEditingIdx(null); }}
+        >
+          Payer Types ({lists.payerTypes?.length || 0})
+        </button>
+        <button
+          className={`tab ${activeCategory === 'lossReasons' ? 'active' : ''}`}
+          onClick={() => { setActiveCategory('lossReasons'); setEditingIdx(null); }}
+        >
+          Loss Reasons ({lists.lossReasons?.length || 0})
         </button>
       </div>
 
@@ -525,7 +559,7 @@ function DropdownManagement({ token, currentUser }: { token: string; currentUser
           <input
             type="text"
             className="form-input"
-            placeholder={`Add new ${activeCategory === 'referralSources' ? 'Referral Source' : activeCategory === 'serviceCoordinators' ? 'Service Coordinator Agency' : 'Insurance Plan'}...`}
+            placeholder={`Add new option to ${categoryLabels[activeCategory] || activeCategory}...`}
             value={newItem}
             onChange={e => setNewItem(e.target.value)}
             style={{ flex: 1 }}

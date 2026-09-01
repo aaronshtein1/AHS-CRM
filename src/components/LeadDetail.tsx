@@ -805,6 +805,34 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
                 </div>
                 <div className="card">
                   <h3 className="section-title" style={{ marginBottom: 16 }}>Intake Info</h3>
+                                    {/* Assigned Rep Change Control */}
+                  {(() => {
+                    const userRole = (user?.role || 'ADMIN').toUpperCase();
+                    const isManagerOrAdmin = ['ADMIN', 'MANAGER'].includes(userRole);
+                    return (
+                      <div className="editable-field" style={{ marginTop: 8 }}>
+                        <span className="editable-label">Assigned Rep</span>
+                        {isManagerOrAdmin ? (
+                          <EditableField 
+                            label="Assigned Rep" 
+                            value={lead.assignedTo || (lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : 'Unassigned')} 
+                            field="assignedTo" 
+                            onSave={handleFieldSave}
+                            options={[
+                              { value: 'Jeffrey Mendoza', label: 'Jeffrey Mendoza (Intake Manager)' },
+                              { value: 'Zevi Spiegel', label: 'Zevi Spiegel (Manager)' },
+                              { value: 'Shelley Skellington', label: 'Shelley Skellington (Marketer)' },
+                              { value: 'Sarah Jenkins', label: 'Sarah Jenkins (Coordinator)' }
+                            ]}
+                          />
+                        ) : (
+                          <span className="editable-value" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                            🔒 {lead.assignedTo || (lead.owner ? `${lead.owner.firstName} ${lead.owner.lastName}` : 'Unassigned')} <small style={{ fontSize: 11 }}>(Managers/Admins only)</small>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <EditableField 
                     label="Referral Source" 
                     value={lead.source} 
