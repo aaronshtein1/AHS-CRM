@@ -7,7 +7,7 @@ import {
   ArrowRightCircle, CheckCircle2, Circle, AlertTriangle, Plus,
   MessageSquare, RefreshCw, PlayCircle, XCircle
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, DEFAULT_PRE_ASSESSMENT_COACHING_LINGO } from '@/lib/api';
 import ICD10SearchInput from './ICD10SearchInput';
 
 const LOST_REASONS = [
@@ -73,9 +73,12 @@ function EditableField({
   );
 }
 
-function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: string; onRefresh: () => void }) {
+function ProcessStepper({ instance, token, onRefresh, lead }: { instance: any; token: string; onRefresh: () => void; lead?: any }) {
   const [advancing, setAdvancing] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showCoachingModal, setShowCoachingModal] = useState(false);
+  const [coachingLingo, setCoachingLingo] = useState(DEFAULT_PRE_ASSESSMENT_COACHING_LINGO);
+  const [verifyingCoaching, setVerifyingCoaching] = useState(false);
   const [showDateModal, setShowDateModal] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [outcome, setOutcome] = useState<'WON' | 'LOST'>('WON');
@@ -100,6 +103,21 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
 
   const handleAdvanceClick = () => {
     const nextInfo = getNextStageInfo();
+    const isWaiver = ['NHTD', 'TBI', 'NHTD & TBI'].includes(lead?.serviceType || '');
+    const isAssessmentStage = nextInfo && (
+      nextInfo.name?.toLowerCase().includes('assessment') ||
+      nextInfo.name?.toLowerCase().includes('uas') ||
+      nextInfo.name?.toLowerCase().includes('isp') ||
+      nextInfo.name?.toLowerCase().includes('clinical') ||
+      nextInfo.name?.toLowerCase().includes('abstract')
+    );
+
+    // Waiver track enforcement: Pre-Assessment Coaching must be verified before clinical assessment stages
+    if (isWaiver && isAssessmentStage && !lead?.isCoachingVerified) {
+      setShowCoachingModal(true);
+      return;
+    }
+
     if (nextInfo && nextInfo.requiresDate) {
       setScheduledDate('');
       setShowDateModal(true);
@@ -120,6 +138,27 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
       console.error(err);
     } finally {
       setAdvancing(false);
+    }
+  };
+
+  const handleConfirmCoachingAndAdvance = async () => {
+    setVerifyingCoaching(true);
+    try {
+      await api.verifyPreAssessmentCoaching(token, lead.id, coachingLingo);
+      setShowCoachingModal(false);
+      onRefresh();
+      
+      const nextInfo = getNextStageInfo();
+      if (nextInfo && nextInfo.requiresDate) {
+        setScheduledDate('');
+        setShowDateModal(true);
+      } else {
+        doAdvance();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setVerifyingCoaching(false);
     }
   };
 
@@ -215,6 +254,70 @@ function ProcessStepper({ instance, token, onRefresh }: { instance: any; token: 
           );
         })}
       </div>
+
+            {/* Pre-Assessment Coaching Verification Modal (Waiver Track Enforcement) */}
+      <AnimatePresence>
+        {showCoachingModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+            }}
+            onClick={() => setShowCoachingModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 12, padding: 24, maxWidth: 500, width: '90%'
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 24 }}>💬</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Pre-Assessment Coaching Verification Required</h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 12, color: 'var(--accent-amber)', fontWeight: 600 }}>
+                    NHTD / TBI Waiver Track Compliance Standard
+                  </p>
+                </div>
+              </div>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 14, fontSize: 13, lineHeight: '1.5' }}>
+                Waiver program regulations mandate that <strong>Pre-Assessment Coaching</strong> must be conducted with the applicant/family before proceeding to clinical assessment scheduling or evaluation.
+              </p>
+              
+              <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-blue)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Verification Compliance Lingo *
+                </div>
+                <textarea
+                  className="form-input"
+                  rows={3}
+                  value={coachingLingo}
+                  onChange={e => setCoachingLingo(e.target.value)}
+                  style={{ width: '100%', fontSize: 12, lineHeight: '1.4', resize: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setShowCoachingModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleConfirmCoachingAndAdvance}
+                  disabled={verifyingCoaching || !coachingLingo.trim()}
+                >
+                  {verifyingCoaching ? 'Verifying...' : 'Verify Coaching & Advance Stage'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Assessment Date Collection Modal */}
       <AnimatePresence>
@@ -833,6 +936,37 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
                       </div>
                     );
                   })()}
+                                    {/* Pre-Assessment Coaching Status Banner */}
+                  <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: lead.isCoachingVerified ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)', border: lead.isCoachingVerified ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(245, 158, 11, 0.2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: lead.isCoachingVerified ? 'var(--accent-green)' : 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {lead.isCoachingVerified ? '✅ Pre-Assessment Coaching Verified' : '⚠️ Pending Pre-Assessment Coaching'}
+                      </div>
+                      {!lead.isCoachingVerified && (
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          style={{ padding: '2px 8px', fontSize: 11 }}
+                          onClick={async () => {
+                            await api.verifyPreAssessmentCoaching(token, lead.id, DEFAULT_PRE_ASSESSMENT_COACHING_LINGO);
+                            loadLead();
+                          }}
+                        >
+                          Verify Coaching
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '4px 0 0 0', lineHeight: '1.4' }}>
+                      {lead.isCoachingVerified 
+                        ? (lead.coachingLingo || DEFAULT_PRE_ASSESSMENT_COACHING_LINGO)
+                        : 'Coaching session must be conducted prior to clinical assessment visit.'}
+                    </p>
+                    {lead.isCoachingVerified && lead.coachingVerifiedAt && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                        Verified on {new Date(lead.coachingVerifiedAt).toLocaleDateString()} {lead.coachingVerifiedBy ? `by ${lead.coachingVerifiedBy.firstName} ${lead.coachingVerifiedBy.lastName}` : ''}
+                      </div>
+                    )}
+                  </div>
+
                   <EditableField 
                     label="Referral Source" 
                     value={lead.source} 
@@ -1042,7 +1176,7 @@ export default function LeadDetail({ token, leadId, onBack, user }: {
           )}
 
           {(lead.processInstances || []).map((pi: any) => (
-            <ProcessStepper key={pi.id} instance={pi} token={token} onRefresh={loadLead} />
+            <ProcessStepper key={pi.id} instance={pi} token={token} onRefresh={loadLead} lead={lead} />
           ))}
         </div>
       )}

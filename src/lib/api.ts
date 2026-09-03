@@ -7535,6 +7535,9 @@ function handleMockFallback(path: string, options: RequestInit) {
 
 // Intelligent Tasking & Risk Calculation Engine
 
+export const DEFAULT_PRE_ASSESSMENT_COACHING_LINGO =
+  "Confirmed applicant/family pre-assessment coaching completed prior to clinical assessment visit. Reviewed evaluation criteria, ADL/IADL assessment expectations, caregiver attendance requirements, and Waiver program participation terms.";
+
 export interface DropdownLists {
   referralSources: string[];
   serviceCoordinators: string[];
@@ -7900,6 +7903,34 @@ export const api = {
     return await api.updateDropdownLists(token, { [category]: items });
   },
 
+
+  verifyPreAssessmentCoaching: async (token: string, leadId: string, customLingo?: string) => {
+    const targetLead = mockState.leads.find(l => l.id === leadId);
+    const lingoText = customLingo || DEFAULT_PRE_ASSESSMENT_COACHING_LINGO;
+    
+    if (targetLead) {
+      targetLead.isCoachingVerified = true;
+      targetLead.coachingVerifiedAt = new Date().toISOString();
+      targetLead.coachingVerifiedBy = { firstName: mockState.user.firstName, lastName: mockState.user.lastName };
+      targetLead.coachingLingo = lingoText;
+      targetLead.updatedAt = new Date().toISOString();
+
+      if (!targetLead.updates) targetLead.updates = [];
+      targetLead.updates.unshift({
+        id: `upd-coaching-${Date.now()}`,
+        type: 'COACHING_VERIFIED',
+        content: `✓ PRE-ASSESSMENT COACHING VERIFIED: ${lingoText}`,
+        createdAt: new Date().toISOString(),
+        createdBy: { firstName: mockState.user.firstName, lastName: mockState.user.lastName },
+        leadId: leadId
+      });
+
+      saveLeadsToStorage();
+    }
+
+    apiFetch(`/api/leads/${leadId}/coaching`, { method: 'POST', body: JSON.stringify({ lingo: lingoText }), token }).catch(() => {});
+    return targetLead;
+  },
 
   updateLead: async (token: string, id: string, data: any, currentUser?: any) => {
     let idx = mockState.leads.findIndex(l => l.id === id);
